@@ -2,3 +2,5 @@ pytest
 pytest-dependency
 pytest-progress
 pytest-httpx
+qiskit>=2.1
+cirq>=1.5.0
