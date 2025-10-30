@@ -3,7 +3,7 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "qit"
+name = "qami"
 version = "0.1.0"
 description = "Base common quantum computing objects description library"
 readme = "README.md"

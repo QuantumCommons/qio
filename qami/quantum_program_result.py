@@ -33,6 +33,14 @@ class QuantumProgramResult:
     serialization: str
 
     @classmethod
+    def from_dict(cls, data: Union[Dict, str]) -> "QuantumProgramResult":
+        data = json.dumps(data)
+        return QuantumProgramResult.schema().load(data)
+
+    def to_dict(self) -> Dict:
+        return QuantumProgramResult.schema().dump(self)
+
+    @classmethod
     def from_qiskit_result(
         cls, qiskit_result: "qiskit.result.Result"
     ) -> "QuantumProgramResult":

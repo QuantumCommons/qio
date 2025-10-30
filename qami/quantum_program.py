@@ -11,7 +11,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.from enum import Enum
+import json
+
 from enum import Enum
+from typing import Dict, Union
 
 from dataclasses import dataclass
 from dataclasses_json import dataclass_json
@@ -33,6 +36,14 @@ class QuantumProgramSerializationFormat(Enum):
 class QuantumProgram:
     serialization_format: QuantumProgramSerializationFormat
     serialization: str
+
+    @classmethod
+    def from_dict(cls, data: Union[Dict, str]) -> "QuantumProgram":
+        data = json.loads(data) if isinstance(data, str) else data
+        return QuantumProgram.schema().load(data)
+
+    def to_dict(self) -> Dict:
+        return QuantumProgram.schema().dump(self)
 
     @classmethod
     def from_qiskit_circuit(

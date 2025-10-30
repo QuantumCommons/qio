@@ -14,6 +14,7 @@
 import json
 import zlib
 
+from typing import Dict, Union
 from enum import Enum
 
 from dataclasses import dataclass
@@ -31,6 +32,14 @@ class QuantumNoiseModelSerializationFormat(Enum):
 class QuamtumNoiseModel:
     serialization_format: QuantumNoiseModelSerializationFormat
     serialization: bytes
+
+    @classmethod
+    def from_dict(cls, data: Union[Dict, str]) -> "QuamtumNoiseModel":
+        data = json.loads(data) if isinstance(data, str) else data
+        return QuamtumNoiseModel.schema().load(data)
+
+    def to_dict(self) -> Dict:
+        return QuamtumNoiseModel.schema().dump(self)
 
     @classmethod
     def from_qiskit_noise_model(

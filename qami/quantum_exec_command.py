@@ -11,7 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from typing import List, Optional
+import json
+
+from typing import List, Optional, Dict, Union
 
 from dataclasses import dataclass
 from dataclasses_json import dataclass_json
@@ -41,3 +43,11 @@ class QuantumExecutionCommand:
     noise_model: Optional[QuamtumNoiseModel] = None
     client: Optional[ClientData] = None
     backend: Optional[BackendData] = None
+
+    @classmethod
+    def from_dict(cls, data: Union[Dict, str]) -> "QuantumExecutionCommand":
+        data = json.loads(data) if isinstance(data, str) else data
+        return QuantumExecutionCommand.schema().load(data)
+
+    def to_dict(self) -> Dict:
+        return QuantumExecutionCommand.schema().dump(self)
