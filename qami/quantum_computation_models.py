@@ -44,12 +44,20 @@ class QuantumComputationModel:
     backend: Optional[BackendData] = None
 
     @classmethod
-    def from_dict(cls, data: Union[Dict, str]) -> "QuantumComputationModel":
-        data = json.loads(data) if isinstance(data, str) else data
+    def from_dict(cls, data: Dict) -> "QuantumComputationModel":
         return QuantumComputationModel.schema().load(data)
 
     def to_dict(self) -> Dict:
         return QuantumComputationModel.schema().dump(self)
+
+    @classmethod
+    def from_json(cls, str) -> "QuantumComputationModel":
+        data = json.loads(data) if isinstance(data, str) else data
+        return cls.from_dict(data)
+
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict())
+
 
 @dataclass_json
 @dataclass
@@ -58,8 +66,15 @@ class QuantumComputationParameters:
 
     @classmethod
     def from_dict(cls, data: Union[Dict, str]) -> "QuantumComputationParameters":
-        data = json.loads(data) if isinstance(data, str) else data
         return QuantumComputationParameters.schema().load(data)
 
     def to_dict(self) -> Dict:
         return QuantumComputationParameters.schema().dump(self)
+
+    @classmethod
+    def from_json(cls, str) -> "QuantumComputationParameters":
+        data = json.loads(data) if isinstance(data, str) else data
+        return cls.from_dict(data)
+
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict())

@@ -39,11 +39,18 @@ class QuantumProgram:
 
     @classmethod
     def from_dict(cls, data: Union[Dict, str]) -> "QuantumProgram":
-        data = json.loads(data) if isinstance(data, str) else data
         return QuantumProgram.schema().load(data)
 
     def to_dict(self) -> Dict:
         return QuantumProgram.schema().dump(self)
+
+    @classmethod
+    def from_json(cls, str) -> "QuantumProgram":
+        data = json.loads(data) if isinstance(data, str) else data
+        return cls.from_dict(data)
+
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict())
 
     @classmethod
     def from_qiskit_circuit(

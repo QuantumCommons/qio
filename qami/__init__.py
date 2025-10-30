@@ -16,5 +16,8 @@ from .quantum_program_result import (
     QuantumProgramResult,
     QuantumProgramResultSerializationFormat,
 )
-from .quantum_computation_models import QuantumComputationModel, QuantumComputationParameters
+from .quantum_computation_models import (
+    QuantumComputationModel,
+    QuantumComputationParameters,
+)
 from .quantum_noise_model import QuantumNoiseModelSerializationFormat, QuamtumNoiseModel

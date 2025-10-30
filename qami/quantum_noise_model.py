@@ -35,11 +35,18 @@ class QuamtumNoiseModel:
 
     @classmethod
     def from_dict(cls, data: Union[Dict, str]) -> "QuamtumNoiseModel":
-        data = json.loads(data) if isinstance(data, str) else data
         return QuamtumNoiseModel.schema().load(data)
 
     def to_dict(self) -> Dict:
         return QuamtumNoiseModel.schema().dump(self)
+
+    @classmethod
+    def from_json(cls, str) -> "QuamtumNoiseModel":
+        data = json.loads(data) if isinstance(data, str) else data
+        return cls.from_dict(data)
+
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict())
 
     @classmethod
     def from_qiskit_noise_model(

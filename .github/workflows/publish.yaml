@@ -17,6 +17,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
     - name: Set up Python
       uses: actions/setup-python@v4
@@ -26,16 +28,18 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install build twine wheel scmver setuptools
+        pip install build twine setuptools-scm
 
-    - name: Get version from setup.py
+    - name: Get version
       id: version
       run: |
-        version=$(python3 setup.py --version)
+        version=$(python -m setuptools_scm)
         echo "version=$version" >> $GITHUB_ENV
+        echo "Version calculée : $version"
 
     - name: Build package
-      run: python setup.py sdist bdist_wheel
+      run: |
+        python -m build
 
     - name: Publish package
       uses: pypa/gh-action-pypi-publish@v1.5.0
