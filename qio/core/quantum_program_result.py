@@ -40,7 +40,7 @@ class QuantumProgramResult:
         return QuantumProgramResult.schema().dump(self)
 
     @classmethod
-    def from_json(cls, str) -> "QuantumProgramResult":
+    def from_json(cls, str: str) -> "QuantumProgramResult":
         data = json.loads(data) if isinstance(data, str) else data
         return cls.from_dict(data)
 
@@ -95,7 +95,7 @@ class QuantumProgramResult:
                 "success": result_dict["success"],
                 "header": result_dict.get("header"),
                 "metadata": result_dict.get("metadata"),
-            }
+            }.update(kwargs)
         )
 
     @classmethod
@@ -116,13 +116,15 @@ class QuantumProgramResult:
         )
 
     @classmethod
-    def from_cirq_result(cls, cirq_result: "cirq.Result") -> "QuantumProgramResult":
+    def from_cirq_result(
+        cls, cirq_result: "cirq.Result", **kwargs
+    ) -> "QuantumProgramResult":
         try:
             import cirq
         except ImportError:
             raise Exception("Cirq is not installed")
 
-        serialization = json.dumps(cirq_result._json_dict_())
+        serialization = json.dumps(cirq_result._json_dict_().update(kwargs))
 
         return cls(
             serialization_format=QuantumProgramResultSerializationFormat.CIRQ_RESULT_JSON_V1,

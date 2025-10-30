@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from dataclasses_json import dataclass_json
 
 from .quantum_program import QuantumProgram
-from .quantum_noise_model import QuamtumNoiseModel
+from .quantum_noise_model import QuantumNoiseModel
 
 
 @dataclass_json
@@ -33,13 +33,14 @@ class ClientData:
 class BackendData:
     name: str
     version: str
+    options: Dict
 
 
 @dataclass_json
 @dataclass
 class QuantumComputationModel:
     programs: List[QuantumProgram]
-    noise_model: Optional[QuamtumNoiseModel] = None
+    noise_model: Optional[QuantumNoiseModel] = None
     client: Optional[ClientData] = None
     backend: Optional[BackendData] = None
 
@@ -51,7 +52,7 @@ class QuantumComputationModel:
         return QuantumComputationModel.schema().dump(self)
 
     @classmethod
-    def from_json(cls, str) -> "QuantumComputationModel":
+    def from_json(cls, str: str) -> "QuantumComputationModel":
         data = json.loads(data) if isinstance(data, str) else data
         return cls.from_dict(data)
 
@@ -63,6 +64,7 @@ class QuantumComputationModel:
 @dataclass
 class QuantumComputationParameters:
     shots: int
+    options: Dict
 
     @classmethod
     def from_dict(cls, data: Union[Dict, str]) -> "QuantumComputationParameters":
@@ -72,7 +74,7 @@ class QuantumComputationParameters:
         return QuantumComputationParameters.schema().dump(self)
 
     @classmethod
-    def from_json(cls, str) -> "QuantumComputationParameters":
+    def from_json(cls, str: str) -> "QuantumComputationParameters":
         data = json.loads(data) if isinstance(data, str) else data
         return cls.from_dict(data)
 

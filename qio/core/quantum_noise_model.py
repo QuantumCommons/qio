@@ -29,19 +29,19 @@ class QuantumNoiseModelSerializationFormat(Enum):
 
 @dataclass_json
 @dataclass
-class QuamtumNoiseModel:
+class QuantumNoiseModel:
     serialization_format: QuantumNoiseModelSerializationFormat
     serialization: bytes
 
     @classmethod
-    def from_dict(cls, data: Union[Dict, str]) -> "QuamtumNoiseModel":
-        return QuamtumNoiseModel.schema().load(data)
+    def from_dict(cls, data: Union[Dict, str]) -> "QuantumNoiseModel":
+        return QuantumNoiseModel.schema().load(data)
 
     def to_dict(self) -> Dict:
-        return QuamtumNoiseModel.schema().dump(self)
+        return QuantumNoiseModel.schema().dump(self)
 
     @classmethod
-    def from_json(cls, str) -> "QuamtumNoiseModel":
+    def from_json(cls, st: str) -> "QuantumNoiseModel":
         data = json.loads(data) if isinstance(data, str) else data
         return cls.from_dict(data)
 
@@ -49,9 +49,9 @@ class QuamtumNoiseModel:
         return json.dumps(self.to_dict())
 
     @classmethod
-    def from_qiskit_noise_model(
+    def from_qiskit_aer_noise_model(
         noise_model: "qiskit_aer.NoiseModel",
-    ) -> "QuamtumNoiseModel":
+    ) -> "QuantumNoiseModel":
         try:
             import numpy as np
         except ImportError:
@@ -86,13 +86,13 @@ class QuamtumNoiseModel:
                 return obj
 
         noise_model_dict = _encode_numpy_complex(noise_model.to_dict(False))
-        return QuamtumNoiseModel(
+        return QuantumNoiseModel(
             serialization_format=QuantumNoiseModelSerializationFormat.QISKIT_AER_ZLIB_JSON_V1,
             serialization=zlib.compress(json.dumps(noise_model_dict).encode()),
             frozenset=True,
         )
 
-    def to_qiskit_noise_model(self) -> "qiskit_aer.NoiseModel":
+    def to_qiskit_aer_noise_model(self) -> "qiskit_aer.NoiseModel":
         try:
             import numpy as np
         except ImportError:
@@ -130,6 +130,7 @@ class QuamtumNoiseModel:
         def _json_deserialization_noise_model(noise_model_str: bytes):
             noise_model_dict = json.loads(noise_model_str)
             noise_model = NoiseModel.from_dict(noise_model_dict)
+
             return noise_model
 
         def _zlib_json_deserialization_noise_model(noise_model_raw: bytes):

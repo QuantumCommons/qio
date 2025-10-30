@@ -23,7 +23,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.12'
+        python-version: '3.10'
 
     - name: Install dependencies
       run: |
@@ -35,11 +35,10 @@ jobs:
       run: |
         version=$(python -m setuptools_scm)
         echo "version=$version" >> $GITHUB_ENV
-        echo "Version calculée : $version"
+        echo "Version : $version"
 
     - name: Build package
-      run: |
-        python -m build
+      run: python -m build
 
     - name: Publish package
       uses: pypa/gh-action-pypi-publish@v1.5.0
