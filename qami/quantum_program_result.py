@@ -34,7 +34,7 @@ class QuantumProgramResult:
 
     @classmethod
     def from_dict(cls, data: Union[Dict, str]) -> "QuantumProgramResult":
-        data = json.dumps(data)
+        data = json.loads(data) if isinstance(data, str) else data
         return QuantumProgramResult.schema().load(data)
 
     def to_dict(self) -> Dict:

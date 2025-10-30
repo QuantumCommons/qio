@@ -37,17 +37,29 @@ class BackendData:
 
 @dataclass_json
 @dataclass
-class QuantumExecutionCommand:
-    shots: int
+class QuantumComputationModel:
     programs: List[QuantumProgram]
     noise_model: Optional[QuamtumNoiseModel] = None
     client: Optional[ClientData] = None
     backend: Optional[BackendData] = None
 
     @classmethod
-    def from_dict(cls, data: Union[Dict, str]) -> "QuantumExecutionCommand":
+    def from_dict(cls, data: Union[Dict, str]) -> "QuantumComputationModel":
         data = json.loads(data) if isinstance(data, str) else data
-        return QuantumExecutionCommand.schema().load(data)
+        return QuantumComputationModel.schema().load(data)
 
     def to_dict(self) -> Dict:
-        return QuantumExecutionCommand.schema().dump(self)
+        return QuantumComputationModel.schema().dump(self)
+
+@dataclass_json
+@dataclass
+class QuantumComputationParameters:
+    shots: int
+
+    @classmethod
+    def from_dict(cls, data: Union[Dict, str]) -> "QuantumComputationParameters":
+        data = json.loads(data) if isinstance(data, str) else data
+        return QuantumComputationParameters.schema().load(data)
+
+    def to_dict(self) -> Dict:
+        return QuantumComputationParameters.schema().dump(self)
