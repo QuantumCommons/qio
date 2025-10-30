@@ -3,7 +3,7 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "qami"
+name = "qio"
 version = "0.1.0"
 description = "Base common quantum computing objects description library"
 readme = "README.md"
@@ -18,9 +18,9 @@ classifiers = [
 ]
 
 dependencies = [
+    "dataclasses",
     "dataclasses-json",
-    "dataclasses"
 ]
 
 [project.urls]
-Repository = "https://github.com/QuantumCommons/qit"
+Repository = "https://github.com/QuantumCommons/qami"
