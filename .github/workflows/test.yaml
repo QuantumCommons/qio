@@ -23,14 +23,14 @@ jobs:
     - name: Get version from setup.py
       id: version
       run: |
-        version=$(python3 setup.py --version)
+        version=$(python -m setuptools_scm)
         echo "version=$version" >> $GITHUB_ENV
 
     - name: Build package
-      run: python setup.py sdist bdist_wheel
+      run: python -m build
 
     - name: Install package
-      run: pip install dist/pyqit-${version}-py3-none-any.whl
+      run: pip install dist/qio-${version}-py3-none-any.whl
 
     - name: Install test
       run: pip install -r tests/requirements.txt
