@@ -32,8 +32,8 @@ class ClientData:
 @dataclass
 class BackendData:
     name: str
-    version: str
-    options: Dict
+    version: Optional[str] = None
+    options: Optional[Dict] = None
 
 
 @dataclass_json
@@ -64,7 +64,7 @@ class QuantumComputationModel:
 @dataclass
 class QuantumComputationParameters:
     shots: int
-    options: Dict
+    options: Optional[Dict] = None
 
     @classmethod
     def from_dict(cls, data: Union[Dict, str]) -> "QuantumComputationParameters":
