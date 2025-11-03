@@ -135,6 +135,7 @@ class QuantumProgram:
         if self.serialization_format in [
             QuantumProgramSerializationFormat.QASM_V1,
             QuantumProgramSerializationFormat.QASM_V2,
+            QuantumProgramSerializationFormat.QASM_V3,
         ]:
             from cirq.contrib.qasm_import import circuit_from_qasm
 

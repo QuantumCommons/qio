@@ -139,13 +139,10 @@ class QuantumProgramResult:
             result_dict = json.loads(self.serialization)
             cirq_result = ResultDict._from_json_dict_(**result_dict)
 
-            data = {
-                "results": [__make_expresult_from_cirq_result(cirq_result)],
-            }
-
-            data.update(kwargs)
-
-            return Result.from_dict(data)
+            kwargs = kwargs or {}
+            return Result(
+                results=[__make_expresult_from_cirq_result(cirq_result)], **kwargs
+            )
         else:
             raise Exception(
                 "unsupported serialization format:", self.serialization_format
