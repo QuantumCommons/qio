@@ -16,7 +16,7 @@ import json
 from typing import Union, Dict, Tuple
 from enum import Enum
 
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from dataclasses_json import dataclass_json
 
 
@@ -37,7 +37,7 @@ class QuantumProgramResult:
         return QuantumProgramResult.schema().load(data)
 
     def to_dict(self) -> Dict:
-        return QuantumProgramResult.schema().dump(self)
+        return asdict(self)
 
     @classmethod
     def from_json(cls, str: str) -> "QuantumProgramResult":

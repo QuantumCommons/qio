@@ -15,7 +15,7 @@ import json
 
 from typing import List, Optional, Dict, Union
 
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from dataclasses_json import dataclass_json
 
 from .quantum_program import QuantumProgram
@@ -49,7 +49,7 @@ class QuantumComputationModel:
         return QuantumComputationModel.schema().load(data)
 
     def to_dict(self) -> Dict:
-        return QuantumComputationModel.schema().dump(self)
+        return asdict(self)
 
     @classmethod
     def from_json(cls, str: str) -> "QuantumComputationModel":

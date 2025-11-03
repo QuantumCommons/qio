@@ -17,7 +17,7 @@ import zlib
 from typing import Dict, Union
 from enum import Enum
 
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from dataclasses_json import dataclass_json
 
 
@@ -38,7 +38,7 @@ class QuantumNoiseModel:
         return QuantumNoiseModel.schema().load(data)
 
     def to_dict(self) -> Dict:
-        return QuantumNoiseModel.schema().dump(self)
+        return asdict(self)
 
     @classmethod
     def from_json(cls, st: str) -> "QuantumNoiseModel":
