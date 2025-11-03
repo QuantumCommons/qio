@@ -15,7 +15,7 @@ import json
 
 from typing import List, Optional, Dict, Union
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from dataclasses_json import dataclass_json
 
 from .quantum_program import QuantumProgram
@@ -33,7 +33,7 @@ class ClientData:
 class BackendData:
     name: str
     version: Optional[str] = None
-    options: Optional[Dict] = None
+    options: Optional[Dict] = field(default=None)
 
 
 @dataclass_json
@@ -64,7 +64,7 @@ class QuantumComputationModel:
 @dataclass
 class QuantumComputationParameters:
     shots: int
-    options: Optional[Dict] = None
+    options: Optional[Dict] = field(default=None)
 
     @classmethod
     def from_json_dict(cls, data: Union[Dict, str]) -> "QuantumComputationParameters":

@@ -18,6 +18,7 @@ from typing import Dict, Union
 from enum import Enum
 
 from dataclasses import dataclass
+from dataclasses_json import dataclass_json
 
 
 class QuantumNoiseModelSerializationFormat(Enum):
@@ -26,6 +27,7 @@ class QuantumNoiseModelSerializationFormat(Enum):
     QISKIT_AER_ZLIB_JSON_V1 = 2
 
 
+@dataclass_json
 @dataclass
 class QuantumNoiseModel:
     serialization_format: QuantumNoiseModelSerializationFormat
