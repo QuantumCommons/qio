@@ -54,20 +54,28 @@ class QuantumProgram:
 
     @classmethod
     def from_qiskit_circuit(
-        cls, qiskit_circuit: "qiskit.QuantumCircuit"
+        cls,
+        qiskit_circuit: "qiskit.QuantumCircuit",
+        dest_format: QuantumProgramSerializationFormat = QuantumProgramSerializationFormat.QASM_V3,
     ) -> "QuantumProgram":
         try:
-            from qiskit import qasm3
+            from qiskit import qasm3, qasm2
         except ImportError:
             raise Exception("Qiskit is not installed")
 
-        serialization = qasm3.dumps(qiskit_circuit)
+        match = {
+            QuantumProgramSerializationFormat.QASM_V2: lambda c: qasm2.dumps(c),
+            QuantumProgramSerializationFormat.QASM_V3: lambda c: qasm3.dumps(c),
+        }
 
-        return cls(
-            serialization_format=QuantumProgramSerializationFormat.QASM_V3,
-            serialization=serialization,
-            frozenset=True,
-        )
+        try:
+            return cls(
+                serialization_format=dest_format,
+                serialization=match[dest_format](qiskit_circuit),
+                frozenset=True,
+            )
+        except:
+            raise
 
     def to_qiskit_circuit(self) -> "qiskit.QuantumCircuit":
         try:
@@ -76,9 +84,11 @@ class QuantumProgram:
             raise Exception("Qiskit is not installed")
 
         match = {
-            QuantumProgramSerializationFormat.QASM_V1: QuantumCircuit.from_qasm_str,
-            QuantumProgramSerializationFormat.QASM_V2: qasm2.loads,
-            QuantumProgramSerializationFormat.QASM_V3: qasm3.loads,
+            QuantumProgramSerializationFormat.QASM_V1: lambda c: QuantumCircuit.from_qasm_str(
+                c
+            ),
+            QuantumProgramSerializationFormat.QASM_V2: lambda c: qasm2.loads(c),
+            QuantumProgramSerializationFormat.QASM_V3: lambda c: qasm3.loads(c),
         }
 
         try:
@@ -90,20 +100,33 @@ class QuantumProgram:
 
     @classmethod
     def from_cirq_circuit(
-        cls, cirq_circuit: "cirq.AbstractCircuit"
+        cls,
+        cirq_circuit: "cirq.AbstractCircuit",
+        dest_format: QuantumProgramSerializationFormat = QuantumProgramSerializationFormat.QASM_V3,
     ) -> "QuantumProgram":
         try:
             import cirq
         except ImportError:
             raise Exception("Cirq is not installed")
 
-        serialization = cirq.to_json(cirq_circuit)
+        match = {
+            QuantumProgramSerializationFormat.QASM_V2: lambda c: cirq.qasm(c),
+            QuantumProgramSerializationFormat.QASM_V3: lambda c: cirq.qasm(
+                c, args=cirq.QasmArgs(version="3.0")
+            ),
+            QuantumProgramSerializationFormat.CIRQ_CIRCUIT_JSON_V1: lambda c: cirq.to_json(
+                c
+            ),
+        }
 
-        return cls(
-            serialization_format=QuantumProgramSerializationFormat.CIRQ_CIRCUIT_JSON_V1,
-            serialization=serialization,
-            frozenset=True,
-        )
+        try:
+            return cls(
+                serialization_format=dest_format,
+                serialization=match[dest_format](cirq_circuit),
+                frozenset=True,
+            )
+        except:
+            raise Exception("unsupported unserialization:", dest_format)
 
     def to_cirq_circuit(self) -> "cirq.Circuit":
         try:

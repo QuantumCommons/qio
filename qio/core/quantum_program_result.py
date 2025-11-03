@@ -13,7 +13,7 @@
 # limitations under the License.
 import json
 
-from typing import Union, Dict
+from typing import Union, Dict, Tuple
 from enum import Enum
 
 from dataclasses import dataclass
@@ -84,19 +84,70 @@ class QuantumProgramResult:
     def to_qiskit_result(self, **kwargs) -> "qiskit.result.Result":
         try:
             from qiskit.result import Result
+            from qiskit.result import Result
+            from qiskit.result.models import ExperimentResult, ExperimentResultData
+
         except ImportError:
             raise Exception("Qiskit is not installed")
 
         result_dict = json.loads(self.serialization)
 
-        return Result.from_dict(
-            {
-                "results": result_dict["results"],
-                "success": result_dict["success"],
-                "header": result_dict.get("header"),
-                "metadata": result_dict.get("metadata"),
-            }.update(kwargs)
-        )
+        if (
+            self.serialization_format
+            == QuantumProgramResultSerializationFormat.QISKIT_RESULT_JSON_V1
+        ):
+            return Result.from_dict(
+                {
+                    "results": result_dict["results"],
+                    "success": result_dict["success"],
+                    "header": result_dict.get("header"),
+                    "metadata": result_dict.get("metadata"),
+                }.update(kwargs)
+            )
+        elif (
+            self.serialization_format
+            == QuantumProgramResultSerializationFormat.CIRQ_RESULT_JSON_V1
+        ):
+            from cirq import ResultDict
+
+            def __make_hex_from_result_array(result: Tuple):
+                str_value = "".join(map(str, result))
+                integer_value = int(str_value, 2)
+
+                return hex(integer_value)
+
+            def __make_expresult_from_cirq_result(
+                cirq_result: ResultDict,
+            ) -> ExperimentResult:
+                hist = dict(
+                    cirq_result.multi_measurement_histogram(
+                        keys=cirq_result.measurements.keys()
+                    )
+                )
+
+                return ExperimentResult(
+                    shots=cirq_result.repetitions,
+                    success=True,
+                    data=ExperimentResultData(
+                        counts={
+                            __make_hex_from_result_array(key): value
+                            for key, value in hist.items()
+                        },
+                    ),
+                )
+
+            result_dict = json.loads(self.serialization)
+            cirq_result = ResultDict._from_json_dict_(**result_dict)
+
+            return Result.from_dict(
+                {
+                    "results": [__make_expresult_from_cirq_result(cirq_result)],
+                }.update(kwargs)
+            )
+        else:
+            raise Exception(
+                "unsupported serialization format:", self.serialization_format
+            )
 
     @classmethod
     def from_cirq_result_dict(
