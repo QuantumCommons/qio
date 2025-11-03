@@ -46,10 +46,10 @@ class QuantumComputationModel:
 
     @classmethod
     def from_dict(cls, data: Dict) -> "QuantumComputationModel":
-        return QuantumComputationModel.schema().load(data)
+        return QuantumComputationModel.schema().loads(data)
 
     def to_dict(self) -> Dict:
-        return asdict(self)
+        return QuantumComputationModel.schema().dumps(self)
 
     @classmethod
     def from_json(cls, str: str) -> "QuantumComputationModel":
@@ -68,10 +68,10 @@ class QuantumComputationParameters:
 
     @classmethod
     def from_dict(cls, data: Union[Dict, str]) -> "QuantumComputationParameters":
-        return QuantumComputationParameters.schema().load(data)
+        return QuantumComputationParameters.schema().loads(data)
 
     def to_dict(self) -> Dict:
-        return QuantumComputationParameters.schema().dump(self)
+        return QuantumComputationParameters.schema().dumps(self)
 
     @classmethod
     def from_json(cls, str: str) -> "QuantumComputationParameters":

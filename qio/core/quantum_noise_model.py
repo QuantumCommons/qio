@@ -35,10 +35,10 @@ class QuantumNoiseModel:
 
     @classmethod
     def from_dict(cls, data: Union[Dict, str]) -> "QuantumNoiseModel":
-        return QuantumNoiseModel.schema().load(data)
+        return QuantumNoiseModel.schema().loads(data)
 
     def to_dict(self) -> Dict:
-        return asdict(self)
+        return QuantumNoiseModel.schema().dumps(self)
 
     @classmethod
     def from_json(cls, st: str) -> "QuantumNoiseModel":

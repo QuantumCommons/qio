@@ -39,10 +39,10 @@ class QuantumProgram:
 
     @classmethod
     def from_dict(cls, data: Union[Dict, str]) -> "QuantumProgram":
-        return QuantumProgram.schema().load(data)
+        return QuantumProgram.schema().loads(data)
 
     def to_dict(self) -> Dict:
-        return asdict(self)
+        return QuantumProgram.schema().dumps(self)
 
     @classmethod
     def from_json(cls, str: str) -> "QuantumProgram":
