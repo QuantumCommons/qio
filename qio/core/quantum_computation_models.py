@@ -69,7 +69,7 @@ class QuantumComputationParameters:
     def from_dict(cls, data: Union[Dict, str]) -> "QuantumComputationParameters":
         return QuantumComputationParameters.schema().loads(data)
 
-    def to_dict_2(self) -> Dict:
+    def to_dict(self) -> Dict:
         return QuantumComputationParameters.schema().dumps(self)
 
     @classmethod
@@ -77,5 +77,5 @@ class QuantumComputationParameters:
         data = json.loads(str)
         return cls.from_dict(data)
 
-    def to_json_2(self) -> str:
-        return json.dumps(self.to_dict_2())
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict())
