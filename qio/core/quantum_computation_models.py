@@ -44,20 +44,22 @@ class QuantumComputationModel:
     client: Optional[ClientData] = None
     backend: Optional[BackendData] = None
 
-    @classmethod
-    def from_dict(cls, data: Dict) -> "QuantumComputationModel":
-        return QuantumComputationModel.schema().loads(data)
+    # @classmethod
+    # def from_dict(cls, data: Dict) -> "QuantumComputationModel":
+    #     return QuantumComputationModel.schema().loads(data)
 
-    def to_dict(self) -> Dict:
-        return QuantumComputationModel.schema().dumps(self)
+    # def to_dict(self) -> Dict:
+    #     k = QuantumComputationModel.schema().dumps(self)
+    #     print("POULET", k)
+    #     return k
 
-    @classmethod
-    def from_json(cls, str: str) -> "QuantumComputationModel":
-        data = json.loads(data) if isinstance(data, str) else data
-        return cls.from_dict(data)
+    # @classmethod
+    # def from_json(cls, str: str) -> "QuantumComputationModel":
+    #     data = json.loads(str)
+    #     return cls.from_dict(data)
 
-    def to_json(self) -> str:
-        return json.dumps(self.to_dict())
+    # def to_json(self) -> str:
+    #     return json.dumps(self.to_dict())
 
 
 @dataclass_json
@@ -66,17 +68,17 @@ class QuantumComputationParameters:
     shots: int
     options: Optional[Dict] = None
 
-    @classmethod
-    def from_dict(cls, data: Union[Dict, str]) -> "QuantumComputationParameters":
-        return QuantumComputationParameters.schema().loads(data)
+    # @classmethod
+    # def from_dict(cls, data: Union[Dict, str]) -> "QuantumComputationParameters":
+    #     return QuantumComputationParameters.schema().loads(data)
 
-    def to_dict(self) -> Dict:
-        return QuantumComputationParameters.schema().dumps(self)
+    # def to_dict(self) -> Dict:
+    #     return QuantumComputationParameters.schema().dumps(self)
 
-    @classmethod
-    def from_json(cls, str: str) -> "QuantumComputationParameters":
-        data = json.loads(data) if isinstance(data, str) else data
-        return cls.from_dict(data)
+    # @classmethod
+    # def from_json(cls, str: str) -> "QuantumComputationParameters":
+    #     data = json.loads(str)
+    #     return cls.from_dict(data)
 
-    def to_json(self) -> str:
-        return json.dumps(self.to_dict())
+    # def to_json(self) -> str:
+    #     return json.dumps(self.to_dict())

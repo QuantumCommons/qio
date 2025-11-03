@@ -33,20 +33,20 @@ class QuantumNoiseModel:
     serialization_format: QuantumNoiseModelSerializationFormat
     serialization: bytes
 
-    @classmethod
-    def from_dict(cls, data: Union[Dict, str]) -> "QuantumNoiseModel":
-        return QuantumNoiseModel.schema().loads(data)
+    # @classmethod
+    # def from_dict(cls, data: Union[Dict, str]) -> "QuantumNoiseModel":
+    #     return QuantumNoiseModel.schema().loads(data)
 
-    def to_dict(self) -> Dict:
-        return QuantumNoiseModel.schema().dumps(self)
+    # def to_dict(self) -> Dict:
+    #     return QuantumNoiseModel.schema().dumps(self)
 
-    @classmethod
-    def from_json(cls, st: str) -> "QuantumNoiseModel":
-        data = json.loads(data) if isinstance(data, str) else data
-        return cls.from_dict(data)
+    # @classmethod
+    # def from_json(cls, st: str) -> "QuantumNoiseModel":
+    #     data = json.loads(str)
+    #     return cls.from_dict(data)
 
-    def to_json(self) -> str:
-        return json.dumps(self.to_dict())
+    # def to_json(self) -> str:
+    #     return json.dumps(self.to_dict())
 
     @classmethod
     def from_qiskit_aer_noise_model(
