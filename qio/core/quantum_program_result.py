@@ -140,8 +140,8 @@ class QuantumProgramResult:
             cirq_result = ResultDict._from_json_dict_(**result_dict)
 
             data = {
-                    "results": [__make_expresult_from_cirq_result(cirq_result)],
-                }
+                "results": [__make_expresult_from_cirq_result(cirq_result)],
+            }
 
             data.update(kwargs)
 

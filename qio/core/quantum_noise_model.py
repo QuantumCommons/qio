@@ -50,6 +50,7 @@ class QuantumNoiseModel:
 
     @classmethod
     def from_qiskit_aer_noise_model(
+        self,
         noise_model: "qiskit_aer.NoiseModel",
     ) -> "QuantumNoiseModel":
         try:
@@ -86,6 +87,7 @@ class QuantumNoiseModel:
                 return obj
 
         noise_model_dict = _encode_numpy_complex(noise_model.to_dict(False))
+
         return QuantumNoiseModel(
             serialization_format=QuantumNoiseModelSerializationFormat.QISKIT_AER_ZLIB_JSON_V1,
             serialization=zlib.compress(json.dumps(noise_model_dict).encode()),
