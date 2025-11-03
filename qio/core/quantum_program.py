@@ -17,6 +17,7 @@ from enum import Enum
 from typing import Dict, Union
 
 from dataclasses import dataclass
+from dataclasses_json import dataclass_json
 
 
 class QuantumProgramSerializationFormat(Enum):
@@ -30,25 +31,26 @@ class QuantumProgramSerializationFormat(Enum):
     PULSER_SEQUENCE_JSON_V1 = 7
 
 
+@dataclass_json
 @dataclass
 class QuantumProgram:
     serialization_format: QuantumProgramSerializationFormat
     serialization: str
 
     @classmethod
-    def from_dict(cls, data: Union[Dict, str]) -> "QuantumProgram":
+    def from_json_dict(cls, data: Union[Dict, str]) -> "QuantumProgram":
         return QuantumProgram.schema().loads(data)
 
-    def to_dict(self) -> Dict:
+    def to_json_dict(self) -> Dict:
         return QuantumProgram.schema().dumps(self)
 
     @classmethod
-    def from_json(cls, str: str) -> "QuantumProgram":
+    def from_json_str(cls, str: str) -> "QuantumProgram":
         data = json.loads(str)
-        return cls.from_dict(data)
+        return cls.from_json_dict(data)
 
-    def to_json(self) -> str:
-        return json.dumps(self.to_dict())
+    def to_json_str(self) -> str:
+        return json.dumps(self.to_json_dict())
 
     @classmethod
     def from_qiskit_circuit(

@@ -17,6 +17,7 @@ from typing import Union, Dict, Tuple
 from enum import Enum
 
 from dataclasses import dataclass
+from dataclasses_json import dataclass_json
 
 
 class QuantumProgramResultSerializationFormat(Enum):
@@ -25,25 +26,26 @@ class QuantumProgramResultSerializationFormat(Enum):
     QISKIT_RESULT_JSON_V1 = 2
 
 
+@dataclass_json
 @dataclass
 class QuantumProgramResult:
     serialization_format: QuantumProgramResultSerializationFormat
     serialization: str
 
     @classmethod
-    def from_dict(cls, data: Union[Dict, str]) -> "QuantumProgramResult":
+    def from_json_dict(cls, data: Union[Dict, str]) -> "QuantumProgramResult":
         return QuantumProgramResult.schema().loads(data)
 
-    def to_dict(self) -> Dict:
+    def to_json_dict(self) -> Dict:
         return QuantumProgramResult.schema().dumps(self)
 
     @classmethod
-    def from_json(cls, str: str) -> "QuantumProgramResult":
+    def from_json_str(cls, str: str) -> "QuantumProgramResult":
         data = json.loads(str)
-        return cls.from_dict(data)
+        return cls.from_json_dict(data)
 
-    def to_json(self) -> str:
-        return json.dumps(self.to_dict())
+    def to_json_str(self) -> str:
+        return json.dumps(self.to_json_dict())
 
     @classmethod
     def from_qiskit_result(

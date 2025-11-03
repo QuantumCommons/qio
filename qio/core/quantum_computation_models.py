@@ -36,6 +36,7 @@ class BackendData:
     options: Optional[Dict] = None
 
 
+@dataclass_json
 @dataclass
 class QuantumComputationModel:
     programs: List[QuantumProgram]
@@ -44,19 +45,19 @@ class QuantumComputationModel:
     backend: Optional[BackendData] = None
 
     @classmethod
-    def from_dict(cls, data: Dict) -> "QuantumComputationModel":
+    def from_json_dict(cls, data: Dict) -> "QuantumComputationModel":
         return QuantumComputationModel.schema().loads(data)
 
-    def to_dict(self) -> Dict:
+    def to_json_dict(self) -> Dict:
         return QuantumComputationModel.schema().dumps(self)
 
     @classmethod
-    def from_json(cls, str: str) -> "QuantumComputationModel":
+    def from_json_str(cls, str: str) -> "QuantumComputationModel":
         data = json.loads(str)
-        return cls.from_dict(data)
+        return cls.from_json_dict(data)
 
-    def to_json(self) -> str:
-        return json.dumps(self.to_dict())
+    def to_json_str(self) -> str:
+        return json.dumps(self.to_json_dict())
 
 
 @dataclass_json
