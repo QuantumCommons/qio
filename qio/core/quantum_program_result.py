@@ -108,7 +108,7 @@ class QuantumProgramResult:
             self.serialization_format
             == QuantumProgramResultSerializationFormat.CIRQ_RESULT_JSON_V1
         ):
-            from cirq import ResultDict
+            from cirq.study import ResultDict
 
             def __make_hex_from_result_array(result: Tuple):
                 str_value = "".join(map(str, result))
