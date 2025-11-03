@@ -37,21 +37,6 @@ class QuantumProgram:
     serialization_format: QuantumProgramSerializationFormat
     serialization: str
 
-    # @classmethod
-    # def from_dict(cls, data: Union[Dict, str]) -> "QuantumProgram":
-    #     return QuantumProgram.schema().loads(data)
-
-    # def to_dict(self) -> Dict:
-    #     return QuantumProgram.schema().dumps(self)
-
-    # @classmethod
-    # def from_json(cls, str: str) -> "QuantumProgram":
-    #     data = json.loads(str)
-    #     return cls.from_dict(data)
-
-    # def to_json(self) -> str:
-    #     return json.dumps(self.to_dict())
-
     @classmethod
     def from_qiskit_circuit(
         cls,
