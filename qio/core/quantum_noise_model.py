@@ -89,7 +89,6 @@ class QuantumNoiseModel:
         return QuantumNoiseModel(
             serialization_format=QuantumNoiseModelSerializationFormat.QISKIT_AER_ZLIB_JSON_V1,
             serialization=zlib.compress(json.dumps(noise_model_dict).encode()),
-            frozenset=True,
         )
 
     def to_qiskit_aer_noise_model(self) -> "qiskit_aer.NoiseModel":

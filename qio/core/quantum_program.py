@@ -72,7 +72,6 @@ class QuantumProgram:
             return cls(
                 serialization_format=dest_format,
                 serialization=match[dest_format](qiskit_circuit),
-                frozenset=True,
             )
         except:
             raise
@@ -123,7 +122,6 @@ class QuantumProgram:
             return cls(
                 serialization_format=dest_format,
                 serialization=match[dest_format](cirq_circuit),
-                frozenset=True,
             )
         except:
             raise Exception("unsupported unserialization:", dest_format)

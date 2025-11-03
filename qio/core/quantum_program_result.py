@@ -61,7 +61,6 @@ class QuantumProgramResult:
         return cls(
             serialization_format=QuantumProgramResultSerializationFormat.QISKIT_RESULT_JSON_V1,
             serialization=serialization,
-            frozenset=True,
         )
 
     @classmethod
@@ -78,7 +77,6 @@ class QuantumProgramResult:
         return cls(
             serialization_format=QuantumProgramResultSerializationFormat.QISKIT_RESULT_JSON_V1,
             serialization=serialization,
-            frozenset=True,
         )
 
     def to_qiskit_result(self, **kwargs) -> "qiskit.result.Result":
@@ -163,7 +161,6 @@ class QuantumProgramResult:
         return cls(
             serialization_format=QuantumProgramResultSerializationFormat.CIRQ_RESULT_JSON_V1,
             serialization=serialization,
-            frozenset=True,
         )
 
     @classmethod
@@ -180,7 +177,6 @@ class QuantumProgramResult:
         return cls(
             serialization_format=QuantumProgramResultSerializationFormat.CIRQ_RESULT_JSON_V1,
             serialization=serialization,
-            frozenset=True,
         )
 
     def to_cirq_result(self, **kwargs) -> "cirq.Result":
