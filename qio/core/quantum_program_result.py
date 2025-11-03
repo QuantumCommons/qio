@@ -94,14 +94,16 @@ class QuantumProgramResult:
             self.serialization_format
             == QuantumProgramResultSerializationFormat.QISKIT_RESULT_JSON_V1
         ):
-            return Result.from_dict(
-                {
-                    "results": result_dict["results"],
-                    "success": result_dict["success"],
-                    "header": result_dict.get("header"),
-                    "metadata": result_dict.get("metadata"),
-                }.update(kwargs)
-            )
+            data = {
+                "results": result_dict["results"],
+                "success": result_dict["success"],
+                "header": result_dict.get("header"),
+                "metadata": result_dict.get("metadata"),
+            }
+
+            data.update(kwargs)
+
+            return Result.from_dict(data)
         elif (
             self.serialization_format
             == QuantumProgramResultSerializationFormat.CIRQ_RESULT_JSON_V1
@@ -137,11 +139,13 @@ class QuantumProgramResult:
             result_dict = json.loads(self.serialization)
             cirq_result = ResultDict._from_json_dict_(**result_dict)
 
-            return Result.from_dict(
-                {
+            data = {
                     "results": [__make_expresult_from_cirq_result(cirq_result)],
-                }.update(kwargs)
-            )
+                }
+
+            data.update(kwargs)
+
+            return Result.from_dict(data)
         else:
             raise Exception(
                 "unsupported serialization format:", self.serialization_format
@@ -172,7 +176,10 @@ class QuantumProgramResult:
         except ImportError:
             raise Exception("Cirq is not installed")
 
-        serialization = json.dumps(cirq_result._json_dict_().update(kwargs))
+        data = cirq_result._json_dict_()
+        data.update(kwargs)
+
+        serialization = json.dumps(data)
 
         return cls(
             serialization_format=QuantumProgramResultSerializationFormat.CIRQ_RESULT_JSON_V1,
