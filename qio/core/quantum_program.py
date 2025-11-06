@@ -101,7 +101,7 @@ class QuantumProgram:
     def from_cirq_circuit(
         cls,
         cirq_circuit: "cirq.AbstractCircuit",
-        dest_format: QuantumProgramSerializationFormat = QuantumProgramSerializationFormat.QASM_V3,
+        dest_format: QuantumProgramSerializationFormat = QuantumProgramSerializationFormat.CIRQ_CIRCUIT_JSON_V1,
     ) -> "QuantumProgram":
         try:
             import cirq

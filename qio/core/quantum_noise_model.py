@@ -31,7 +31,7 @@ class QuantumNoiseModelSerializationFormat(Enum):
 @dataclass
 class QuantumNoiseModel:
     serialization_format: QuantumNoiseModelSerializationFormat
-    serialization: bytes
+    serialization: str
 
     @classmethod
     def from_json_dict(cls, data: Union[Dict, str]) -> "QuantumNoiseModel":
@@ -90,7 +90,7 @@ class QuantumNoiseModel:
 
         return QuantumNoiseModel(
             serialization_format=QuantumNoiseModelSerializationFormat.QISKIT_AER_ZLIB_JSON_V1,
-            serialization=zlib.compress(json.dumps(noise_model_dict).encode()),
+            serialization=f"{zlib.compress(json.dumps(noise_model_dict).encode())}",
         )
 
     def to_qiskit_aer_noise_model(self) -> "qiskit_aer.NoiseModel":
@@ -134,13 +134,13 @@ class QuantumNoiseModel:
 
             return noise_model
 
-        def _zlib_json_deserialization_noise_model(noise_model_raw: bytes):
+        def _zlib_json_deserialization_noise_model(noise_model_raw: str):
             """
             Attempt to decode the noise model dictionary using the custom decoder, and if it fails, try to use the default decoder.
             This is a workaround for a bug in the Qiskit NoiseModel.from_dict method.
             """
-            noise_model_str = zlib.decompress(noise_model_raw)
-            noise_model_dict = json.loads(noise_model_str)
+            noise_model_bytes = zlib.decompress(noise_model_raw.encode())
+            noise_model_dict = json.loads(noise_model_bytes)
             try:
                 noise_model_dict_custom_decoded = _custom_decode_numpy_and_complex(
                     noise_model_dict
