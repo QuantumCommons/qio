@@ -22,5 +22,7 @@ dependencies = [
     "dataclasses-json",
 ]
 
+[tool.setuptools_scm]
+
 [project.urls]
 Repository = "https://github.com/QuantumCommons/qio"
