@@ -35,8 +35,8 @@ jobs:
     - name: Get version
       id: version
       run: |
-        version=$(python -m setuptools_scm)
-        echo "version=$version" >> $GITHUB_ENV
+        version=$(sed -n 's/^ *version.*=.*"\([^"]*\)".*/\1/p' pyproject.toml)
+        echo "version=$(version)" >> $GITHUB_ENV
         echo "Version : $version"
 
     - name: Build package
