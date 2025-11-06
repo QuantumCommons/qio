@@ -13,6 +13,7 @@
 # limitations under the License.
 import json
 import zlib
+import base64
 
 from typing import Dict, Union
 from enum import Enum
@@ -24,7 +25,7 @@ from dataclasses_json import dataclass_json
 class QuantumNoiseModelSerializationFormat(Enum):
     UNKOWN_SERIALIZATION_FORMAT = 0
     QISKIT_AER_JSON_V1 = 1
-    QISKIT_AER_ZLIB_JSON_V1 = 2
+    QISKIT_AER_ZLIB_BASE64_V1 = 2
 
 
 @dataclass_json
@@ -88,9 +89,15 @@ class QuantumNoiseModel:
 
         noise_model_dict = _encode_numpy_complex(noise_model.to_dict(False))
 
+        # dict → json → bytes → zlib → base64 → string
+        json_bytes_payload = json.dumps(noise_model_dict).encode()
+        compressed_payload = zlib.compress(json_bytes_payload)
+        base64_payload = base64.b64encode(compressed_payload)
+        string_payload = base64_payload.decode("ascii")
+
         return QuantumNoiseModel(
-            serialization_format=QuantumNoiseModelSerializationFormat.QISKIT_AER_ZLIB_JSON_V1,
-            serialization=f"{zlib.compress(json.dumps(noise_model_dict).encode())}",
+            serialization_format=QuantumNoiseModelSerializationFormat.QISKIT_AER_ZLIB_BASE64_V1,
+            serialization=string_payload,
         )
 
     def to_qiskit_aer_noise_model(self) -> "qiskit_aer.NoiseModel":
@@ -134,13 +141,17 @@ class QuantumNoiseModel:
 
             return noise_model
 
-        def _zlib_json_deserialization_noise_model(noise_model_raw: str):
+        def _zlib_json_deserialization_noise_model(string_payload: str):
             """
             Attempt to decode the noise model dictionary using the custom decoder, and if it fails, try to use the default decoder.
             This is a workaround for a bug in the Qiskit NoiseModel.from_dict method.
             """
-            noise_model_bytes = zlib.decompress(noise_model_raw.encode())
-            noise_model_dict = json.loads(noise_model_bytes)
+            # string → base64 → zlib → bytes → json → dict
+            base64_payload = string_payload.encode("ascii")
+            compressed_payload = base64.b64decode(base64_payload)
+            json_bytes_payload = zlib.decompress(compressed_payload)
+            noise_model_dict = json.loads(json_bytes_payload)
+
             try:
                 noise_model_dict_custom_decoded = _custom_decode_numpy_and_complex(
                     noise_model_dict
@@ -151,7 +162,7 @@ class QuantumNoiseModel:
 
         match = {
             QuantumNoiseModelSerializationFormat.QISKIT_AER_JSON_V1: _json_deserialization_noise_model,
-            QuantumNoiseModelSerializationFormat.QISKIT_AER_ZLIB_JSON_V1: _zlib_json_deserialization_noise_model,
+            QuantumNoiseModelSerializationFormat.QISKIT_AER_ZLIB_BASE64_V1: _zlib_json_deserialization_noise_model,
         }
 
         try:
