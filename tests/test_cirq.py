@@ -81,7 +81,7 @@ def test_nothing():
     qc = _random_cirq_circuit(10)
     shots = 100
 
-    program = QuantumProgram.from_cirq_circuit()
+    program = QuantumProgram.from_cirq_circuit(qc)
 
     backend_data = BackendData(
         name="qsim",
@@ -107,14 +107,7 @@ def test_nothing():
     model = QuantumComputationModel.from_json_str(computation_model_json)
     params = QuantumComputationParameters.from_json_str(computation_parameters_json)
 
-    qsim_simulator = QSimSimulator(
-        verbosity=1,
-        max_fused_gate_size=2,
-        ev_noisy_repetitions=1,
-        denormals_are_zeros=False,
-        cpu_threads=int(os.environ.get("QSIM_CPU_THREADS", 32)),
-        use_gpu=False,
-    )
+    qsim_simulator = QSimSimulator()
 
     circuit = model.programs[0].to_cirq_circuit()
 

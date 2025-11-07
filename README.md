@@ -38,7 +38,7 @@ from qio.core import (
 qc = _random_cirq_circuit(10)
 shots = 100
 
-program = QuantumProgram.from_cirq_circuit()
+program = QuantumProgram.from_cirq_circuit(qc)
 
 model_json = QuantumComputationModel(
     programs=[program],
