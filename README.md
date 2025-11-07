@@ -1,7 +1,9 @@
 # qio
 `qio` is python package to smoothly manipulate common quantum computing objects between client and server.
 
-![](docs/logo.png){ width="500" height="500" style="display: block; margin: 0 auto" }
+<p align="center">
+  <img src="https://github.com/QuantumCommons/qio/tree/main/docs/logo.png" />
+</p>
 
 ## Installation
 
