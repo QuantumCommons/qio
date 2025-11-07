@@ -12,8 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import json
+import collections
+import io
 
-from typing import Union, Dict, Tuple
+from typing import Union, Sequence, Dict, Tuple, Callable, TypeVar, cast
 from enum import Enum
 
 from dataclasses import dataclass
@@ -108,7 +110,71 @@ class QuantumProgramResult:
             self.serialization_format
             == QuantumProgramResultSerializationFormat.CIRQ_RESULT_JSON_V1
         ):
-            from cirq.study import ResultDict
+            T = TypeVar("T")
+
+            import numpy as np
+
+            def __unpack_bits(
+                packed_bits: str, dtype: str, shape: Sequence[int]
+            ) -> np.ndarray:
+                bits_bytes = bytes.fromhex(packed_bits)
+                bits = np.unpackbits(np.frombuffer(bits_bytes, dtype=np.uint8))
+                return bits[: np.prod(shape).item()].reshape(shape).astype(dtype)
+
+            def __unpack_digits(
+                packed_digits: str,
+                binary: bool,
+                dtype: Union[None, str],
+                shape: Union[None, Sequence[int]],
+            ):
+                if binary:
+                    dtype = cast(str, dtype)
+                    shape = cast(Sequence[int], shape)
+                    return __unpack_bits(packed_digits, dtype, shape)
+
+                buffer = io.BytesIO()
+                buffer.write(bytes.fromhex(packed_digits))
+                buffer.seek(0)
+                digits = np.load(buffer, allow_pickle=False)
+                buffer.close()
+                return digits
+
+            def __key_to_str(key) -> str:
+                if isinstance(key, str):
+                    return key
+                return ",".join(str(q) for q in key)
+
+            def __big_endian_bits_to_int(bits) -> int:
+                result = 0
+                for e in bits:
+                    result <<= 1
+                    if e:
+                        result |= 1
+                return result
+
+            def __tuple_of_big_endian_int(bit_groups) -> Tuple[int, ...]:
+                return tuple(__big_endian_bits_to_int(bits) for bits in bit_groups)
+
+            def __multi_measurement_histogram(
+                keys,
+                measurements,
+                repetitions,
+                fold_func: Callable[[Tuple], T] = cast(
+                    Callable[[Tuple], T], __tuple_of_big_endian_int
+                ),
+            ):
+
+                fixed_keys = tuple(__key_to_str(key) for key in keys)
+                samples = zip(*(measurements[sub_key] for sub_key in fixed_keys))
+
+                if len(fixed_keys) == 0:
+                    samples = [()] * repetitions
+
+                c: collections.Counter = collections.Counter()
+
+                for sample in samples:
+                    c[fold_func(sample)] += 1
+                return c
 
             def __make_hex_from_result_array(result: Tuple):
                 str_value = "".join(map(str, result))
@@ -116,17 +182,38 @@ class QuantumProgramResult:
 
                 return hex(integer_value)
 
+            def __measurements(records: Dict):
+                measurements = {}
+                for key, data in records.items():
+                    reps, instances, qubits = data.shape
+                    if instances != 1:
+                        raise ValueError(
+                            "Cannot extract 2D measurements for repeated keys"
+                        )
+                    measurements[key] = data.reshape((reps, qubits))
+
+                return measurements
+
             def __make_expresult_from_cirq_result(
-                cirq_result: ResultDict,
+                cirq_result_dict: Dict,
             ) -> ExperimentResult:
+                raw_records = cirq_result_dict["records"]
+                records = {
+                    key: __unpack_digits(**val) for key, val in raw_records.items()
+                }
+                measurements = __measurements(records)
+                repetitions = len(next(iter(records.values())))
+
                 hist = dict(
-                    cirq_result.multi_measurement_histogram(
-                        keys=cirq_result.measurements.keys()
+                    __multi_measurement_histogram(
+                        keys=measurements.keys(),
+                        measurements=measurements,
+                        repetitions=repetitions,
                     )
                 )
 
                 return ExperimentResult(
-                    shots=cirq_result.repetitions,
+                    shots=repetitions,
                     success=True,
                     data=ExperimentResultData(
                         counts={
@@ -137,11 +224,10 @@ class QuantumProgramResult:
                 )
 
             result_dict = json.loads(self.serialization)
-            cirq_result = ResultDict._from_json_dict_(**result_dict)
 
             kwargs = kwargs or {}
             return Result(
-                results=[__make_expresult_from_cirq_result(cirq_result)], **kwargs
+                results=[__make_expresult_from_cirq_result(result_dict)], **kwargs
             )
         else:
             raise Exception(
