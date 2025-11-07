@@ -1,7 +1,9 @@
-# qio
-`qio` is python package to smoothly manipulate common quantum computing objects between client and server.
-
 <p align="center"><img width="50%" src="docs/logo.png" /></p>
+
+# qio
+`qio` is a python package to smoothly manipulate quantum computing objects between client and server.
+
+It handle all the conversion boilerplate to focus your dev on your quantum SDK and backend on real matters.
 
 ## Installation
 
@@ -14,6 +16,8 @@ pip install qio
 ## Getting started
 
 To leverage `qio` and get quick interoperability between your frontend and your backend, you simply need to use qio wrappers system.
+
+Here a snippet code for `cirq` and `qsim`:
 
 ```python
 import cirq
