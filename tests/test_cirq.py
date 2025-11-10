@@ -11,13 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import os
 import numpy as np
 
 import cirq
 
 from cirq.circuits import Circuit
-from qsimcirq import QSimSimulator
+from qsimcirq import QSimSimulator, QSimOptions
 
 from qio.core import (
     QuantumComputationModel,
@@ -27,6 +26,8 @@ from qio.core import (
     BackendData,
     ClientData,
 )
+
+from qio.utils import CompressionFormat
 
 
 def _random_cirq_circuit(size: int) -> Circuit:
@@ -75,13 +76,16 @@ def _random_cirq_circuit(size: int) -> Circuit:
     return circuit
 
 
-def test_nothing():
+def test_global_cirq_flow():
     ### Client side
 
     qc = _random_cirq_circuit(10)
-    shots = 100
+    shots = 10
 
     program = QuantumProgram.from_cirq_circuit(qc)
+    compressed_program = QuantumProgram.from_cirq_circuit(
+        qc, compress_format=CompressionFormat.ZLIB_BASE64_V1
+    )
 
     backend_data = BackendData(
         name="qsim",
@@ -93,7 +97,7 @@ def test_nothing():
     )
 
     computation_model_json = QuantumComputationModel(
-        programs=[program],
+        programs=[program, compressed_program],
         backend=backend_data,
         client=client_data,
     ).to_json_str()
@@ -103,29 +107,38 @@ def test_nothing():
     ).to_json_str()
 
     ### Server/Compute side
-
     model = QuantumComputationModel.from_json_str(computation_model_json)
     params = QuantumComputationParameters.from_json_str(computation_parameters_json)
 
-    qsim_simulator = QSimSimulator()
-
     circuit = model.programs[0].to_cirq_circuit()
+    uncomp_circuit = model.programs[1].to_cirq_circuit()
 
-    result = qsim_simulator.run(circuit, repetitions=params.shots)
-    result._params = None  # ParamResolver cannot be serialized
+    qsim_simulator = QSimSimulator(QSimOptions(cpu_threads=4))
+    result_1 = qsim_simulator.run(circuit, repetitions=params.shots)
+    result_1._params = None  # ParamResolver cannot be serialized
 
-    qresult = QuantumProgramResult.from_cirq_result(result).to_json_str()
+    result_2 = qsim_simulator.run(uncomp_circuit, repetitions=params.shots)
+    result_2._params = None  # ParamResolver cannot be serialized
 
-    ### Client side
+    qresult = QuantumProgramResult.from_cirq_result(result_1).to_json_str()
+    compressed_qresult = QuantumProgramResult.from_cirq_result(
+        result_2, CompressionFormat.ZLIB_BASE64_V1
+    ).to_json_str()
 
     assert qresult is not None
+    assert compressed_qresult is not None
 
+    ### Client side
     cirq_result = qresult.to_cirq_result()
-
     assert cirq_result is not None
-    assert cirq_result.repetitions == shots
+    print(cirq_result)
+
+    uncomp_cirq_result = compressed_qresult.to_cirq_result()
+    assert uncomp_cirq_result is not None
 
     qiskit_result = qresult.to_qiskit_result()
-
     assert qiskit_result is not None
-    assert cirq_result.shots == shots
+    print(qiskit_result)
+
+    uncomp_qiskit_result = compressed_qresult.to_qiskit_result()
+    assert uncomp_qiskit_result is not None

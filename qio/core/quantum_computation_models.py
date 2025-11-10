@@ -40,9 +40,9 @@ class BackendData:
 @dataclass
 class QuantumComputationModel:
     programs: List[QuantumProgram]
-    noise_model: Optional[QuantumNoiseModel] = None
-    client: Optional[ClientData] = None
-    backend: Optional[BackendData] = None
+    noise_model: Optional[QuantumNoiseModel] = field(default=None)
+    client: Optional[ClientData] = field(default=None)
+    backend: Optional[BackendData] = field(default=None)
 
     @classmethod
     def from_json_dict(cls, data: Dict) -> "QuantumComputationModel":
