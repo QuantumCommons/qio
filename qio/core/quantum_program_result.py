@@ -56,7 +56,7 @@ class QuantumProgramResult:
     def from_qiskit_result(
         cls,
         qiskit_result: "qiskit.result.Result",
-        compress_format: CompressionFormat = CompressionFormat.NONE,
+        compress_format: CompressionFormat = CompressionFormat.ZLIB_BASE64_V1,
     ) -> "QuantumProgramResult":
         try:
             from qiskit.result import Result
@@ -69,7 +69,7 @@ class QuantumProgramResult:
     def from_qiskit_result_dict(
         cls,
         qiskit_result_dict: Union[str, Dict],
-        compress_format: CompressionFormat = CompressionFormat.NONE,
+        compress_format: CompressionFormat = CompressionFormat.ZLIB_BASE64_V1,
     ) -> "QuantumProgramResult":
         if isinstance(qiskit_result_dict, str):
             qiskit_result_dict = json.loads(
@@ -257,7 +257,7 @@ class QuantumProgramResult:
     def from_cirq_result(
         cls,
         cirq_result: "cirq.Result",
-        compress_format: CompressionFormat = CompressionFormat.NONE,
+        compress_format: CompressionFormat = CompressionFormat.ZLIB_BASE64_V1,
     ) -> "QuantumProgramResult":
         try:
             import cirq
@@ -272,7 +272,7 @@ class QuantumProgramResult:
     def from_cirq_result_dict(
         cls,
         cirq_result_dict: Union[str, Dict],
-        compress_format: CompressionFormat = CompressionFormat.NONE,
+        compress_format: CompressionFormat = CompressionFormat.ZLIB_BASE64_V1,
     ) -> "QuantumProgramResult":
         if isinstance(cirq_result_dict, str):
             cirq_result_dict = json.loads(

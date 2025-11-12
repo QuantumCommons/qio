@@ -60,7 +60,7 @@ class QuantumProgram:
         cls,
         qiskit_circuit: "qiskit.QuantumCircuit",
         dest_format: QuantumProgramSerializationFormat = QuantumProgramSerializationFormat.QASM_V3,
-        compress_format: CompressionFormat = CompressionFormat.NONE,
+        compress_format: CompressionFormat = CompressionFormat.ZLIB_BASE64_V1,
     ) -> "QuantumProgram":
         try:
             from qiskit import qasm3, qasm2
@@ -133,7 +133,7 @@ class QuantumProgram:
         cls,
         cirq_circuit: "cirq.AbstractCircuit",
         dest_format: QuantumProgramSerializationFormat = QuantumProgramSerializationFormat.CIRQ_CIRCUIT_JSON_V1,
-        compress_format: CompressionFormat = CompressionFormat.NONE,
+        compress_format: CompressionFormat = CompressionFormat.ZLIB_BASE64_V1,
     ) -> "QuantumProgram":
         try:
             import cirq

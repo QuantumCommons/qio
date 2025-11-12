@@ -32,7 +32,9 @@ def test_global_cirq_flow():
     qc = random_square_cirq_circuit(10)
     shots = 20
 
-    program = QuantumProgram.from_cirq_circuit(qc)
+    program = QuantumProgram.from_cirq_circuit(
+        qc, compress_format=CompressionFormat.NONE
+    )
     compressed_program = QuantumProgram.from_cirq_circuit(
         qc, compress_format=CompressionFormat.ZLIB_BASE64_V1
     )
@@ -70,10 +72,12 @@ def test_global_cirq_flow():
     result_2 = qsim_simulator.run(uncomp_circuit, repetitions=params.shots)
     result_2._params = None  # ParamResolver cannot be serialized
 
-    qpr_json = QuantumProgramResult.from_cirq_result(result_1).to_json_str()
+    qpr_json = QuantumProgramResult.from_cirq_result(
+        result_1, compress_format=CompressionFormat.NONE
+    ).to_json_str()
 
     compressed_qpr_json = QuantumProgramResult.from_cirq_result(
-        result_2, CompressionFormat.ZLIB_BASE64_V1
+        result_2, compress_format=CompressionFormat.ZLIB_BASE64_V1
     ).to_json_str()
 
     assert qpr_json is not None
