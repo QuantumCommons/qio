@@ -54,7 +54,7 @@ class QuantumNoiseModel:
     def from_qiskit_aer_noise_model(
         self,
         noise_model: "qiskit_aer.NoiseModel",
-        compress_format: CompressionFormat = CompressionFormat.ZLIB_BASE64_V1,
+        compression_format: CompressionFormat = CompressionFormat.ZLIB_BASE64_V1,
     ) -> "QuantumNoiseModel":
         try:
             import numpy as np
@@ -66,10 +66,10 @@ class QuantumNoiseModel:
         except ImportError:
             raise Exception("Qiskit Aer is not installed")
 
-        compress_format = (
+        compression_format = (
             CompressionFormat.NONE
-            if compress_format == CompressionFormat.UNKOWN_COMPRESSION_FORMAT
-            else compress_format
+            if compression_format == CompressionFormat.UNKOWN_COMPRESSION_FORMAT
+            else compression_format
         )
 
         def _encode_numpy_complex(obj):
@@ -104,11 +104,11 @@ class QuantumNoiseModel:
             ),
         }
 
-        serialization = apply_compression[compress_format](noise_model_dict)
+        serialization = apply_compression[compression_format](noise_model_dict)
 
         return QuantumNoiseModel(
             serialization_format=QuantumNoiseModelSerializationFormat.QISKIT_AER_JSON_V1,
-            compression_format=compress_format,
+            compression_format=compression_format,
             serialization=serialization,
         )
 
