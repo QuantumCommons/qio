@@ -19,6 +19,8 @@ from typing import Dict, Union
 from dataclasses import dataclass
 from dataclasses_json import dataclass_json
 
+from qio.utils import CompressionFormat, zlib_to_str, str_to_zlib, sanitize_qasm_str
+
 
 class QuantumProgramSerializationFormat(Enum):
     UNKOWN_SERIALIZATION_FORMAT = 0
@@ -34,6 +36,7 @@ class QuantumProgramSerializationFormat(Enum):
 @dataclass_json
 @dataclass
 class QuantumProgram:
+    compression_format: CompressionFormat
     serialization_format: QuantumProgramSerializationFormat
     serialization: str
 
@@ -57,24 +60,51 @@ class QuantumProgram:
         cls,
         qiskit_circuit: "qiskit.QuantumCircuit",
         dest_format: QuantumProgramSerializationFormat = QuantumProgramSerializationFormat.QASM_V3,
+        compression_format: CompressionFormat = CompressionFormat.ZLIB_BASE64_V1,
     ) -> "QuantumProgram":
         try:
             from qiskit import qasm3, qasm2
         except ImportError:
             raise Exception("Qiskit is not installed")
 
-        match = {
+        dest_format = (
+            QuantumProgramSerializationFormat.QASM_V3
+            if dest_format
+            == QuantumProgramSerializationFormat.UNKOWN_SERIALIZATION_FORMAT
+            else dest_format
+        )
+        compression_format = (
+            CompressionFormat.NONE
+            if compression_format == CompressionFormat.UNKOWN_COMPRESSION_FORMAT
+            else compression_format
+        )
+
+        apply_serialization = {
             QuantumProgramSerializationFormat.QASM_V2: lambda c: qasm2.dumps(c),
-            QuantumProgramSerializationFormat.QASM_V3: lambda c: qasm3.dumps(c),
+            QuantumProgramSerializationFormat.QASM_V3: lambda c: sanitize_qasm_str(
+                qasm3.dumps(c)
+            ),
         }
+
+        serialization = apply_serialization[dest_format](qiskit_circuit)
+
+        apply_compression = {
+            CompressionFormat.NONE: lambda s: s,
+            CompressionFormat.ZLIB_BASE64_V1: lambda s: str_to_zlib(s),
+        }
+
+        compressed_serialization = apply_compression[compression_format](serialization)
 
         try:
             return cls(
                 serialization_format=dest_format,
-                serialization=match[dest_format](qiskit_circuit),
+                compression_format=compression_format,
+                serialization=compressed_serialization,
             )
-        except:
-            raise
+        except Exception as e:
+            raise Exception(
+                "unsupport serialization:", dest_format, compression_format, e
+            )
 
     def to_qiskit_circuit(self) -> "qiskit.QuantumCircuit":
         try:
@@ -82,7 +112,12 @@ class QuantumProgram:
         except ImportError:
             raise Exception("Qiskit is not installed")
 
-        match = {
+        serialization = self.serialization
+
+        if self.compression_format == CompressionFormat.ZLIB_BASE64_V1:
+            serialization = zlib_to_str(serialization)
+
+        apply_unserialization = {
             QuantumProgramSerializationFormat.QASM_V1: lambda c: QuantumCircuit.from_qasm_str(
                 c
             ),
@@ -91,10 +126,10 @@ class QuantumProgram:
         }
 
         try:
-            return match[self.serialization_format](self.serialization)
-        except:
+            return apply_unserialization[self.serialization_format](serialization)
+        except Exception as e:
             raise Exception(
-                "unsupported serialization format:", self.serialization_format
+                "unsupported unserialization:", self.serialization_format, e
             )
 
     @classmethod
@@ -102,13 +137,26 @@ class QuantumProgram:
         cls,
         cirq_circuit: "cirq.AbstractCircuit",
         dest_format: QuantumProgramSerializationFormat = QuantumProgramSerializationFormat.CIRQ_CIRCUIT_JSON_V1,
+        compression_format: CompressionFormat = CompressionFormat.ZLIB_BASE64_V1,
     ) -> "QuantumProgram":
         try:
             import cirq
         except ImportError:
             raise Exception("Cirq is not installed")
 
-        match = {
+        dest_format = (
+            QuantumProgramSerializationFormat.CIRQ_CIRCUIT_JSON_V1
+            if dest_format
+            == QuantumProgramSerializationFormat.UNKOWN_SERIALIZATION_FORMAT
+            else dest_format
+        )
+        compression_format = (
+            CompressionFormat.NONE
+            if compression_format == CompressionFormat.UNKOWN_COMPRESSION_FORMAT
+            else compression_format
+        )
+
+        apply_serialization = {
             QuantumProgramSerializationFormat.QASM_V2: lambda c: cirq.qasm(c),
             QuantumProgramSerializationFormat.QASM_V3: lambda c: cirq.qasm(
                 c, args=cirq.QasmArgs(version="3.0")
@@ -118,13 +166,23 @@ class QuantumProgram:
             ),
         }
 
+        serialization = apply_serialization[dest_format](cirq_circuit)
+
+        apply_compression = {
+            CompressionFormat.NONE: lambda s: s,
+            CompressionFormat.ZLIB_BASE64_V1: lambda s: str_to_zlib(s),
+        }
+
+        compressed_serialization = apply_compression[compression_format](serialization)
+
         try:
             return cls(
                 serialization_format=dest_format,
-                serialization=match[dest_format](cirq_circuit),
+                compression_format=compression_format,
+                serialization=compressed_serialization,
             )
-        except:
-            raise Exception("unsupported unserialization:", dest_format)
+        except Exception as e:
+            raise Exception("unsupported serialization:", dest_format, e)
 
     def to_cirq_circuit(self) -> "cirq.Circuit":
         try:
@@ -132,20 +190,29 @@ class QuantumProgram:
         except ImportError:
             raise Exception("Cirq is not installed")
 
-        if self.serialization_format in [
-            QuantumProgramSerializationFormat.QASM_V1,
-            QuantumProgramSerializationFormat.QASM_V2,
-            QuantumProgramSerializationFormat.QASM_V3,
-        ]:
-            from cirq.contrib.qasm_import import circuit_from_qasm
+        serialization = self.serialization
 
-            return circuit_from_qasm(self.serialization)
+        try:
+            if self.compression_format == CompressionFormat.ZLIB_BASE64_V1:
+                serialization = zlib_to_str(serialization)
 
-        if self.serialization_format in [
-            QuantumProgramSerializationFormat.CIRQ_CIRCUIT_JSON_V1,
-        ]:
-            from cirq import read_json
+            if self.serialization_format in [
+                QuantumProgramSerializationFormat.QASM_V1,
+                QuantumProgramSerializationFormat.QASM_V2,
+                QuantumProgramSerializationFormat.QASM_V3,
+            ]:
+                from cirq.contrib.qasm_import import circuit_from_qasm
 
-            return read_json(json_text=self.serialization)
+                return circuit_from_qasm(serialization)
 
-        raise Exception("unsupported serialization format:", self.serialization_format)
+            if self.serialization_format in [
+                QuantumProgramSerializationFormat.CIRQ_CIRCUIT_JSON_V1,
+            ]:
+                from cirq import read_json
+
+                return read_json(json_text=serialization)
+
+        except Exception as e:
+            raise Exception(
+                "unsupported unserialization:", self.serialization_format, e
+            )

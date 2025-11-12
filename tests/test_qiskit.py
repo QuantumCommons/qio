@@ -11,46 +11,83 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import os
-import time
-import numpy as np
+from qiskit_aer import AerSimulator
 
-import qio
-import qiskit
+from qio.core import (
+    QuantumComputationModel,
+    QuantumComputationParameters,
+    QuantumProgramResult,
+    QuantumProgram,
+    BackendData,
+    ClientData,
+)
 
-from qiskit import QuantumCircuit
+from qio.utils import CompressionFormat
 
-
-def _random_qiskit_circuit(size: int) -> QuantumCircuit:
-    num_qubits = size
-    num_gate = size
-
-    qc = QuantumCircuit(num_qubits)
-
-    for _ in range(num_gate):
-        random_gate = np.random.choice(["unitary", "cx", "cy", "cz"])
-
-        if random_gate == "cx" or random_gate == "cy" or random_gate == "cz":
-            control_qubit = np.random.randint(0, num_qubits)
-            target_qubit = np.random.randint(0, num_qubits)
-
-            while target_qubit == control_qubit:
-                target_qubit = np.random.randint(0, num_qubits)
-
-            getattr(qc, random_gate)(control_qubit, target_qubit)
-        else:
-            for q in range(num_qubits):
-                random_gate = np.random.choice(["h", "x", "y", "z"])
-                getattr(qc, random_gate)(q)
-
-    qc.measure_all()
-
-    return qc
+from qio.utils.circuit import random_square_qiskit_circuit
 
 
-def test_nothing():
-    pass
+def test_global_qiskit_flow():
+    ### Client side
+    qc = random_square_qiskit_circuit(10)
+    shots = 20
 
+    program = QuantumProgram.from_qiskit_circuit(
+        qc, compression_format=CompressionFormat.NONE
+    )
+    compressed_program = QuantumProgram.from_qiskit_circuit(
+        qc, compression_format=CompressionFormat.ZLIB_BASE64_V1
+    )
 
-def test_nothing_twice():
-    pass
+    backend_data = BackendData(
+        name="aer",
+        version="1",
+    )
+
+    client_data = ClientData(
+        user_agent="local",
+    )
+
+    computation_model_json = QuantumComputationModel(
+        programs=[program, compressed_program],
+        backend=backend_data,
+        client=client_data,
+    ).to_json_str()
+
+    computation_parameters_json = QuantumComputationParameters(
+        shots=shots,
+    ).to_json_str()
+
+    ### Server/Compute side
+    model = QuantumComputationModel.from_json_str(computation_model_json)
+    params = QuantumComputationParameters.from_json_str(computation_parameters_json)
+
+    circuit = model.programs[0].to_qiskit_circuit()
+    uncomp_circuit = model.programs[1].to_qiskit_circuit()
+
+    aer_simulator = AerSimulator()
+    result_1 = aer_simulator.run(circuit, shots=params.shots).result()
+    result_2 = aer_simulator.run(uncomp_circuit, shots=params.shots).result()
+
+    qpr_json = QuantumProgramResult.from_qiskit_result(
+        result_1, compression_format=CompressionFormat.NONE
+    ).to_json_str()
+
+    compressed_qpr_json = QuantumProgramResult.from_qiskit_result(
+        result_2, compression_format=CompressionFormat.ZLIB_BASE64_V1
+    ).to_json_str()
+
+    assert qpr_json is not None
+    assert compressed_qpr_json is not None
+
+    ### Client side
+    qpr = QuantumProgramResult.from_json_str(qpr_json)
+    compressed_qpr = QuantumProgramResult.from_json_str(compressed_qpr_json)
+
+    qiskit_result = qpr.to_qiskit_result()
+    assert qiskit_result is not None
+    print("qiskit result:", qiskit_result)
+
+    uncomp_qiskit_result = compressed_qpr.to_qiskit_result()
+    assert uncomp_qiskit_result is not None
+    print("qiskit result from compressed data:", uncomp_qiskit_result)

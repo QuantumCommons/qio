@@ -11,12 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import os
-import numpy as np
-
-import cirq
-
-from cirq.circuits import Circuit
 from qsimcirq import QSimSimulator
 
 from qio.core import (
@@ -28,60 +22,22 @@ from qio.core import (
     ClientData,
 )
 
+from qio.utils import CompressionFormat
 
-def _random_cirq_circuit(size: int) -> Circuit:
-    num_qubits = size
-    num_gate = size
-
-    # Create the qubits
-    qubits = [cirq.LineQubit(i) for i in range(num_qubits)]
-
-    # Initialize the circuit
-    circuit = Circuit()
-
-    for _ in range(num_gate):
-        random_gate = np.random.choice(["unitary", "cx", "cy", "cz"])
-
-        if random_gate in ["cx", "cy", "cz"]:
-            control_qubit = np.random.randint(0, num_qubits)
-            target_qubit = np.random.randint(0, num_qubits)
-
-            while target_qubit == control_qubit:
-                target_qubit = np.random.randint(0, num_qubits)
-
-            if random_gate == "cx":
-                circuit.append(cirq.CNOT(qubits[control_qubit], qubits[target_qubit]))
-            elif random_gate == "cy":
-                circuit.append(
-                    cirq.Y.controlled(1)(qubits[control_qubit], qubits[target_qubit])
-                )
-            elif random_gate == "cz":
-                circuit.append(cirq.CZ(qubits[control_qubit], qubits[target_qubit]))
-        else:
-            for q in range(num_qubits):
-                random_single_qubit_gate = np.random.choice(["H", "X", "Y", "Z"])
-                if random_single_qubit_gate == "H":
-                    circuit.append(cirq.H(qubits[q]))
-                elif random_single_qubit_gate == "X":
-                    circuit.append(cirq.X(qubits[q]))
-                elif random_single_qubit_gate == "Y":
-                    circuit.append(cirq.Y(qubits[q]))
-                elif random_single_qubit_gate == "Z":
-                    circuit.append(cirq.Z(qubits[q]))
-
-    # Add measurement
-    circuit.append(cirq.measure(*qubits, key="result"))
-
-    return circuit
+from qio.utils.circuit import random_square_cirq_circuit
 
 
-def test_nothing():
+def test_global_cirq_flow():
     ### Client side
+    qc = random_square_cirq_circuit(10)
+    shots = 20
 
-    qc = _random_cirq_circuit(10)
-    shots = 100
-
-    program = QuantumProgram.from_cirq_circuit(qc)
+    program = QuantumProgram.from_cirq_circuit(
+        qc, compression_format=CompressionFormat.NONE
+    )
+    compressed_program = QuantumProgram.from_cirq_circuit(
+        qc, compression_format=CompressionFormat.ZLIB_BASE64_V1
+    )
 
     backend_data = BackendData(
         name="qsim",
@@ -93,7 +49,7 @@ def test_nothing():
     )
 
     computation_model_json = QuantumComputationModel(
-        programs=[program],
+        programs=[program, compressed_program],
         backend=backend_data,
         client=client_data,
     ).to_json_str()
@@ -103,29 +59,46 @@ def test_nothing():
     ).to_json_str()
 
     ### Server/Compute side
-
     model = QuantumComputationModel.from_json_str(computation_model_json)
     params = QuantumComputationParameters.from_json_str(computation_parameters_json)
 
-    qsim_simulator = QSimSimulator()
-
     circuit = model.programs[0].to_cirq_circuit()
+    uncomp_circuit = model.programs[1].to_cirq_circuit()
 
-    result = qsim_simulator.run(circuit, repetitions=params.shots)
-    result._params = None  # ParamResolver cannot be serialized
+    qsim_simulator = QSimSimulator()
+    result_1 = qsim_simulator.run(circuit, repetitions=params.shots)
+    result_1._params = None  # ParamResolver cannot be serialized
 
-    qresult = QuantumProgramResult.from_cirq_result(result).to_json_str()
+    result_2 = qsim_simulator.run(uncomp_circuit, repetitions=params.shots)
+    result_2._params = None  # ParamResolver cannot be serialized
+
+    qpr_json = QuantumProgramResult.from_cirq_result(
+        result_1, compression_format=CompressionFormat.NONE
+    ).to_json_str()
+
+    compressed_qpr_json = QuantumProgramResult.from_cirq_result(
+        result_2, compression_format=CompressionFormat.ZLIB_BASE64_V1
+    ).to_json_str()
+
+    assert qpr_json is not None
+    assert compressed_qpr_json is not None
 
     ### Client side
+    qpr = QuantumProgramResult.from_json_str(qpr_json)
+    compressed_qpr = QuantumProgramResult.from_json_str(compressed_qpr_json)
 
-    assert qresult is not None
-
-    cirq_result = qresult.to_cirq_result()
-
+    cirq_result = qpr.to_cirq_result()
     assert cirq_result is not None
-    assert cirq_result.repetitions == shots
+    print("cirq result:", cirq_result)
 
-    qiskit_result = qresult.to_qiskit_result()
+    uncomp_cirq_result = compressed_qpr.to_cirq_result()
+    assert uncomp_cirq_result is not None
+    print("cirq result from compressed data:", uncomp_cirq_result)
 
+    qiskit_result = qpr.to_qiskit_result()
     assert qiskit_result is not None
-    assert cirq_result.shots == shots
+    print("qiskit result:", qiskit_result)
+
+    uncomp_qiskit_result = compressed_qpr.to_qiskit_result()
+    assert uncomp_qiskit_result is not None
+    print("qiskit result from compressed data:", uncomp_qiskit_result)
