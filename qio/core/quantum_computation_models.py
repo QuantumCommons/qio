@@ -32,7 +32,7 @@ class ClientData:
 @dataclass
 class BackendData:
     name: str
-    version: Optional[str] = None
+    version: Optional[str] = field(default=None)
     options: Optional[Dict] = field(default=None)
 
 

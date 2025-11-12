@@ -96,7 +96,7 @@ class QuantumProgram:
         try:
             return cls(
                 serialization_format=dest_format,
-                compress_format=compress_format,
+                compression_format=compress_format,
                 serialization=compressed_serialization,
             )
         except Exception as e:

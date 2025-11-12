@@ -184,7 +184,6 @@ class QuantumProgramResult:
                     Callable[[Tuple], T], __tuple_of_big_endian_int
                 ),
             ):
-
                 fixed_keys = tuple(__key_to_str(key) for key in keys)
                 samples = zip(*(measurements[sub_key] for sub_key in fixed_keys))
 
@@ -199,7 +198,8 @@ class QuantumProgramResult:
 
             def __make_hex_from_result_array(result: Tuple):
                 str_value = "".join(map(str, result))
-                integer_value = int(str_value, 2)
+                binary_value = bin(int(str_value))
+                integer_value = int(binary_value, 2)
 
                 return hex(integer_value)
 
@@ -243,8 +243,6 @@ class QuantumProgramResult:
                         },
                     ),
                 )
-
-            result_dict = json.loads(self.serialization)
 
             kwargs = kwargs or {}
             return Result(

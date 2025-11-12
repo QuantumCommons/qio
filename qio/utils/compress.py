@@ -16,8 +16,9 @@ def zlib_to_str(e: str) -> str:
     base64_payload = e.encode("ascii")
     compressed_payload = base64.b64decode(base64_payload)
     json_bytes_payload = zlib.decompress(compressed_payload)
+    string_payload = json_bytes_payload.decode()
 
-    return json_bytes_payload
+    return string_payload
 
 
 def str_to_zlib(s: str) -> str:
@@ -30,7 +31,7 @@ def str_to_zlib(s: str) -> str:
 
 
 def dict_to_zlib(d: Dict) -> str:
-    return dict_to_zlib(json.dumps(d))
+    return str_to_zlib(json.dumps(d))
 
 
 def zlib_to_dict(e: str) -> Dict:
