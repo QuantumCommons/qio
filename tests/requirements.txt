@@ -7,3 +7,4 @@ qiskit-aer~=0.17
 cirq~=1.5.0
 qsimcirq
 numpy
+qiskit-qasm3-import
