@@ -102,7 +102,9 @@ class QuantumProgram:
                 serialization=compressed_serialization,
             )
         except Exception as e:
-            raise Exception("unsupport serialization:", dest_format, compression_format, e)
+            raise Exception(
+                "unsupport serialization:", dest_format, compression_format, e
+            )
 
     def to_qiskit_circuit(self) -> "qiskit.QuantumCircuit":
         try:
