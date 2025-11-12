@@ -33,10 +33,10 @@ def test_global_qiskit_flow():
     shots = 20
 
     program = QuantumProgram.from_qiskit_circuit(
-        qc, compress_format=CompressionFormat.NONE
+        qc, compression_format=CompressionFormat.NONE
     )
     compressed_program = QuantumProgram.from_qiskit_circuit(
-        qc, compress_format=CompressionFormat.ZLIB_BASE64_V1
+        qc, compression_format=CompressionFormat.ZLIB_BASE64_V1
     )
 
     backend_data = BackendData(
@@ -70,11 +70,11 @@ def test_global_qiskit_flow():
     result_2 = aer_simulator.run(uncomp_circuit, shots=params.shots).result()
 
     qpr_json = QuantumProgramResult.from_qiskit_result(
-        result_1, compress_format=CompressionFormat.NONE
+        result_1, compression_format=CompressionFormat.NONE
     ).to_json_str()
 
     compressed_qpr_json = QuantumProgramResult.from_qiskit_result(
-        result_2, compress_format=CompressionFormat.ZLIB_BASE64_V1
+        result_2, compression_format=CompressionFormat.ZLIB_BASE64_V1
     ).to_json_str()
 
     assert qpr_json is not None

@@ -19,7 +19,7 @@ from typing import Dict, Union
 from dataclasses import dataclass
 from dataclasses_json import dataclass_json
 
-from qio.utils import CompressionFormat, zlib_to_str, str_to_zlib
+from qio.utils import CompressionFormat, zlib_to_str, str_to_zlib, sanitize_qasm_str
 
 
 class QuantumProgramSerializationFormat(Enum):
@@ -60,7 +60,7 @@ class QuantumProgram:
         cls,
         qiskit_circuit: "qiskit.QuantumCircuit",
         dest_format: QuantumProgramSerializationFormat = QuantumProgramSerializationFormat.QASM_V3,
-        compress_format: CompressionFormat = CompressionFormat.ZLIB_BASE64_V1,
+        compression_format: CompressionFormat = CompressionFormat.ZLIB_BASE64_V1,
     ) -> "QuantumProgram":
         try:
             from qiskit import qasm3, qasm2
@@ -73,15 +73,17 @@ class QuantumProgram:
             == QuantumProgramSerializationFormat.UNKOWN_SERIALIZATION_FORMAT
             else dest_format
         )
-        compress_format = (
+        compression_format = (
             CompressionFormat.NONE
-            if compress_format == CompressionFormat.UNKOWN_COMPRESSION_FORMAT
-            else compress_format
+            if compression_format == CompressionFormat.UNKOWN_COMPRESSION_FORMAT
+            else compression_format
         )
 
         apply_serialization = {
             QuantumProgramSerializationFormat.QASM_V2: lambda c: qasm2.dumps(c),
-            QuantumProgramSerializationFormat.QASM_V3: lambda c: qasm3.dumps(c),
+            QuantumProgramSerializationFormat.QASM_V3: lambda c: sanitize_qasm_str(
+                qasm3.dumps(c)
+            ),
         }
 
         serialization = apply_serialization[dest_format](qiskit_circuit)
@@ -91,16 +93,16 @@ class QuantumProgram:
             CompressionFormat.ZLIB_BASE64_V1: lambda s: str_to_zlib(s),
         }
 
-        compressed_serialization = apply_compression[compress_format](serialization)
+        compressed_serialization = apply_compression[compression_format](serialization)
 
         try:
             return cls(
                 serialization_format=dest_format,
-                compression_format=compress_format,
+                compression_format=compression_format,
                 serialization=compressed_serialization,
             )
         except Exception as e:
-            raise Exception("unsupport serialization:", dest_format, compress_format, e)
+            raise Exception("unsupport serialization:", dest_format, compression_format, e)
 
     def to_qiskit_circuit(self) -> "qiskit.QuantumCircuit":
         try:
@@ -133,7 +135,7 @@ class QuantumProgram:
         cls,
         cirq_circuit: "cirq.AbstractCircuit",
         dest_format: QuantumProgramSerializationFormat = QuantumProgramSerializationFormat.CIRQ_CIRCUIT_JSON_V1,
-        compress_format: CompressionFormat = CompressionFormat.ZLIB_BASE64_V1,
+        compression_format: CompressionFormat = CompressionFormat.ZLIB_BASE64_V1,
     ) -> "QuantumProgram":
         try:
             import cirq
@@ -146,10 +148,10 @@ class QuantumProgram:
             == QuantumProgramSerializationFormat.UNKOWN_SERIALIZATION_FORMAT
             else dest_format
         )
-        compress_format = (
+        compression_format = (
             CompressionFormat.NONE
-            if compress_format == CompressionFormat.UNKOWN_COMPRESSION_FORMAT
-            else compress_format
+            if compression_format == CompressionFormat.UNKOWN_COMPRESSION_FORMAT
+            else compression_format
         )
 
         apply_serialization = {
@@ -169,12 +171,12 @@ class QuantumProgram:
             CompressionFormat.ZLIB_BASE64_V1: lambda s: str_to_zlib(s),
         }
 
-        compressed_serialization = apply_compression[compress_format](serialization)
+        compressed_serialization = apply_compression[compression_format](serialization)
 
         try:
             return cls(
                 serialization_format=dest_format,
-                compression_format=compress_format,
+                compression_format=compression_format,
                 serialization=compressed_serialization,
             )
         except Exception as e:
