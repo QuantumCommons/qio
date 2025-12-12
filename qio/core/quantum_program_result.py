@@ -99,7 +99,6 @@ class QuantumProgramResult:
     def to_qiskit_result(self, **kwargs) -> "qiskit.result.Result":
         try:
             from qiskit.result import Result
-            from qiskit.result import Result
             from qiskit.result.models import ExperimentResult, ExperimentResultData
 
         except ImportError:
