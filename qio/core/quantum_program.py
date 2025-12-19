@@ -157,10 +157,8 @@ class QuantumProgram:
         )
 
         apply_serialization = {
-            QuantumProgramSerializationFormat.QASM_V2: lambda c: cirq.qasm(c),
-            QuantumProgramSerializationFormat.QASM_V3: lambda c: cirq.qasm(
-                c, args=cirq.QasmArgs(version="3.0")
-            ),
+            QuantumProgramSerializationFormat.QASM_V2: lambda c: c.to_qasm(version="2.0"),
+            QuantumProgramSerializationFormat.QASM_V3: lambda c: c.to_qasm(version="3.0"),
             QuantumProgramSerializationFormat.CIRQ_CIRCUIT_JSON_V1: lambda c: cirq.to_json(
                 c
             ),
