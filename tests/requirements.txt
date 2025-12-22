@@ -8,3 +8,4 @@ cirq~=1.5.0
 qsimcirq
 numpy
 qiskit-qasm3-import
+ply
