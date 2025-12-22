@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "qio"
-version = "0.1.19"
-description = "Base common quantum computing objects description library"
+version = "0.1.20"
+description = "Common quantum computing objects description and conversion library"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
