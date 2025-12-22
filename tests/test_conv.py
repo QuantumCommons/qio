@@ -16,7 +16,7 @@ from cirq.sim import Simulator
 from qio.core import (
     QuantumComputationModel,
     QuantumProgram,
-    QuantumProgramSerializationFormat
+    QuantumProgramSerializationFormat,
 )
 
 from qio.utils import CompressionFormat
@@ -27,10 +27,10 @@ def test_cirq_to_qiskit_to_cirq_flow():
     original_cirq_qc = random_square_cirq_circuit(10)
 
     program_1 = QuantumProgram.from_cirq_circuit(
-        original_cirq_qc, dest_format=QuantumProgramSerializationFormat.QASM_V3, compression_format=CompressionFormat.NONE
+        original_cirq_qc,
+        dest_format=QuantumProgramSerializationFormat.QASM_V3,
+        compression_format=CompressionFormat.NONE,
     )
-
-    print("original ser", program_1.serialization)
 
     computation_model_json_1 = QuantumComputationModel(
         programs=[program_1],
@@ -41,19 +41,16 @@ def test_cirq_to_qiskit_to_cirq_flow():
     qiskit_qc = model_1.programs[0].to_qiskit_circuit()
 
     program_2 = QuantumProgram.from_qiskit_circuit(
-        qiskit_qc, dest_format=QuantumProgramSerializationFormat.QASM_V3, compression_format=CompressionFormat.NONE
+        qiskit_qc,
+        dest_format=QuantumProgramSerializationFormat.QASM_V3,
+        compression_format=CompressionFormat.NONE,
     )
-
-    print("after qiskit ser", program_2.serialization)
 
     computation_model_json = QuantumComputationModel(
         programs=[program_2],
     ).to_json_str()
 
     model_2 = QuantumComputationModel.from_json_str(computation_model_json)
-
-    model_2.programs[0].serialization = program_1.serialization
-    print("after replacement", model_2.programs[0].serialization)
     new_cirq_qc = model_2.programs[0].to_cirq_circuit()
 
     sim_1 = Simulator(seed=42)
@@ -62,8 +59,5 @@ def test_cirq_to_qiskit_to_cirq_flow():
 
     res_original = sim_1.run(original_cirq_qc, repetitions=repetitions)
     res_new = sim_2.run(new_cirq_qc, repetitions=repetitions)
-
-    print("RESULT1", res_original)
-    print("RESULT2", res_new)
 
     assert res_original == res_new
