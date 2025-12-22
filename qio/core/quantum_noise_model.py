@@ -25,7 +25,7 @@ from qio.utils import dict_to_zlib, zlib_to_dict, CompressionFormat
 class QuantumNoiseModelSerializationFormat(Enum):
     UNKOWN_SERIALIZATION_FORMAT = 0
     QISKIT_AER_JSON_V1 = 1
-    # TODO: support Qsim noise model
+    # TODO: support Qsim/Cirq noise model
 
 
 @dataclass_json

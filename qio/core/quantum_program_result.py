@@ -297,7 +297,7 @@ class QuantumProgramResult:
             serialization=serialization,
         )
 
-    def to_cirq_result(self, **kwargs) -> "cirq.Result":
+    def to_cirq_result(self, params=None, **kwargs) -> "cirq.Result":
         try:
             from cirq import ResultDict
         except ImportError:
@@ -310,15 +310,55 @@ class QuantumProgramResult:
 
         result_dict = apply_uncompression[self.compression_format](self.serialization)
 
-        if (
-            self.serialization_format
-            != QuantumProgramResultSerializationFormat.CIRQ_RESULT_JSON_V1
-        ):
-            raise Exception("unsupported unserialization:", self.serialization_format)
-
         if kwargs:
             result_dict.update(kwargs)
 
-        cirq_result = ResultDict._from_json_dict_(**result_dict)
+        if (
+            self.serialization_format
+            == QuantumProgramResultSerializationFormat.CIRQ_RESULT_JSON_V1
+        ):
+            cirq_result = ResultDict._from_json_dict_(params=params, **result_dict)
+        elif (
+            self.serialization_format
+            == QuantumProgramResultSerializationFormat.QISKIT_RESULT_JSON_V1
+        ):
+            from cirq import ResultDict
+            import numpy as np
+
+            def _extract_measurement_key(experiment_result: Dict) -> str:
+                header = experiment_result.get("header", {})
+                creg_sizes = header.get("creg_sizes", [])
+
+                if creg_sizes and len(creg_sizes) > 0:
+                    m_name = creg_sizes[0][0]
+                    return m_name.replace("m_", "")
+
+                return "m"
+
+            def _to_cirq_result(qiskit_data: Dict) -> ResultDict:
+                experiment = qiskit_data.get("results", [{}])[0]
+                m_key = _extract_measurement_key(experiment)
+
+                counts = experiment.get("data", {}).get("counts", {})
+                num_qubits = experiment.get("header", {}).get("n_qubits", 0)
+                all_shots = []
+
+                for bitstring_hex, count in counts.items():
+                    if bitstring_hex.startswith("0x"):
+                        integer_val = int(bitstring_hex, 16)
+                        bitstring = format(integer_val, f"0{num_qubits}b")
+                    else:
+                        bitstring = bitstring_hex
+
+                    bits = [int(b) for b in bitstring]
+
+                    for _ in range(count):
+                        all_shots.append(bits)
+
+                measurements = {m_key: np.array(all_shots)}
+
+                return ResultDict(params=params, measurements=measurements)
+
+            cirq_result = _to_cirq_result(result_dict)
 
         return cirq_result
