@@ -297,7 +297,7 @@ class QuantumProgramResult:
             serialization=serialization,
         )
 
-    def to_cirq_result(self, params=None, **kwargs) -> "cirq.Result":
+    def to_cirq_result(self, **kwargs) -> "cirq.Result":
         try:
             from cirq import ResultDict
         except ImportError:
@@ -317,7 +317,7 @@ class QuantumProgramResult:
             self.serialization_format
             == QuantumProgramResultSerializationFormat.CIRQ_RESULT_JSON_V1
         ):
-            cirq_result = ResultDict._from_json_dict_(params=params, **result_dict)
+            cirq_result = ResultDict._from_json_dict_(**result_dict)
         elif (
             self.serialization_format
             == QuantumProgramResultSerializationFormat.QISKIT_RESULT_JSON_V1
@@ -335,8 +335,8 @@ class QuantumProgramResult:
 
                 return "m"
 
-            def _to_cirq_result(qiskit_data: Dict) -> ResultDict:
-                experiment = qiskit_data.get("results", [{}])[0]
+            def _to_cirq_result(data: Dict) -> ResultDict:
+                experiment = data.get("results", [{}])[0]
                 m_key = _extract_measurement_key(experiment)
 
                 counts = experiment.get("data", {}).get("counts", {})
@@ -366,7 +366,7 @@ class QuantumProgramResult:
 
                 measurements = {m_key: np.array(all_shots)}
 
-                return ResultDict(params=params, measurements=measurements)
+                return ResultDict(params=data.pop("params", None), measurements=measurements)
 
             cirq_result = _to_cirq_result(result_dict)
 
