@@ -182,18 +182,21 @@ class QuantumProgramResult:
                 fold_func: Callable[[Tuple], T] = cast(
                     Callable[[Tuple], T], __tuple_of_big_endian_int
                 ),
-            ):
+            ) -> Tuple[collections.Counter, list]:
                 fixed_keys = tuple(__key_to_str(key) for key in keys)
                 samples = zip(*(measurements[sub_key] for sub_key in fixed_keys))
 
                 if len(fixed_keys) == 0:
                     samples = [()] * repetitions
 
-                c: collections.Counter = collections.Counter()
+                counter = collections.Counter()
+                memory = []
 
                 for sample in samples:
-                    c[fold_func(sample)] += 1
-                return c
+                    memory.append("".join(str(a) for a in np.concatenate(sample)))
+                    counter[fold_func(sample)] += 1
+
+                return (counter, memory)
 
             def __make_hex_from_result_array(result: Tuple):
                 str_value = "".join(map(str, result))
@@ -224,13 +227,13 @@ class QuantumProgramResult:
                 measurements = __measurements(records)
                 repetitions = len(next(iter(records.values())))
 
-                hist = dict(
-                    __multi_measurement_histogram(
-                        keys=measurements.keys(),
-                        measurements=measurements,
-                        repetitions=repetitions,
-                    )
+                counter, memory = __multi_measurement_histogram(
+                    keys=measurements.keys(),
+                    measurements=measurements,
+                    repetitions=repetitions,
                 )
+
+                histogram = dict(counter)
 
                 return ExperimentResult(
                     shots=repetitions,
@@ -238,12 +241,14 @@ class QuantumProgramResult:
                     data=ExperimentResultData(
                         counts={
                             __make_hex_from_result_array(key): value
-                            for key, value in hist.items()
+                            for key, value in histogram.items()
                         },
+                        memory=memory,
                     ),
                 )
 
             kwargs = kwargs or {}
+
             return Result(
                 results=[__make_expresult_from_cirq_result(result_dict)], **kwargs
             )
@@ -366,7 +371,9 @@ class QuantumProgramResult:
 
                 measurements = {m_key: np.array(all_shots)}
 
-                return ResultDict(params=data.pop("params", None), measurements=measurements)
+                return ResultDict(
+                    params=data.pop("params", None), measurements=measurements
+                )
 
             cirq_result = _to_cirq_result(result_dict)
 
