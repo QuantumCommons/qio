@@ -340,7 +340,17 @@ class QuantumProgramResult:
                 m_key = _extract_measurement_key(experiment)
 
                 counts = experiment.get("data", {}).get("counts", {})
-                num_qubits = experiment.get("header", {}).get("n_qubits", 0)
+                header = experiment.get("header", {})
+                qreg_sizes = header.get("qreg_sizes", [])
+
+                if qreg_sizes and len(qreg_sizes) > 0:
+                    num_qubits = qreg_sizes[0][1]
+                else:
+                    memory = experiment.get("memory", {})
+
+                    if memory and len(memory) > 0:
+                        num_qubits = len(memory[0])
+
                 all_shots = []
 
                 for bitstring_hex, count in counts.items():
@@ -351,7 +361,6 @@ class QuantumProgramResult:
                         bitstring = bitstring_hex
 
                     bits = [int(b) for b in bitstring]
-
                     for _ in range(count):
                         all_shots.append(bits)
 
