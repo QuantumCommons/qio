@@ -28,6 +28,7 @@ class QuantumProgramResultSerializationFormat(Enum):
     UNKOWN_SERIALIZATION_FORMAT = 0
     CIRQ_RESULT_JSON_V1 = 1
     QISKIT_RESULT_JSON_V1 = 2
+    CUDAQ_SAMPLE_RESULT_JSON_V1 = 3
 
 
 @dataclass_json
@@ -51,6 +52,64 @@ class QuantumProgramResult:
 
     def to_json_str(self) -> str:
         return json.dumps(self.to_json_dict())
+
+    @classmethod
+    def from_cudaq_sample_result(
+        cls,
+        sample_result: "cudaq.SampleResult",
+        compression_format: CompressionFormat = CompressionFormat.ZLIB_BASE64_V1,
+    ) -> "QuantumProgramResult":
+        compression_format = (
+            CompressionFormat.NONE
+            if compression_format == CompressionFormat.UNKOWN_COMPRESSION_FORMAT
+            else compression_format
+        )
+
+        apply_compression = {
+            CompressionFormat.NONE: lambda d: json.dumps(d),
+            CompressionFormat.ZLIB_BASE64_V1: lambda d: dict_to_zlib(d),
+        }
+
+        sample_serialization = sample_result.serialize()
+
+        try:
+            return cls(
+                compression_format=compression_format,
+                serialization_format=QuantumProgramResultSerializationFormat.CUDAQ_SAMPLE_RESULT_JSON_V1,
+                serialization=apply_compression[compression_format](
+                    sample_serialization
+                ),
+            )
+        except Exception as e:
+            raise Exception("unsupport serialization:", compression_format, e)
+
+    def to_cudaq_sample_result(self, **kwargs) -> "cudaq.SampleResult":
+        try:
+            import cudaq
+        except ImportError:
+            raise Exception("CUDA-Q is not installed")
+
+        apply_uncompression = {
+            CompressionFormat.NONE: lambda d: json.loads(d),
+            CompressionFormat.ZLIB_BASE64_V1: lambda d: zlib_to_dict(d),
+        }
+
+        serialized_sample_result = apply_uncompression[self.compression_format](
+            self.serialization
+        )
+
+        if (
+            self.serialization_format
+            == QuantumProgramResultSerializationFormat.CUDAQ_SAMPLE_RESULT_JSON_V1
+        ):
+            sample_result = cudaq.SampleResult()
+            sample_result.deserialize(serialized_sample_result)
+
+            return sample_result
+        else:
+            raise Exception(
+                "unsupported serialization format:", self.serialization_format
+            )
 
     @classmethod
     def from_qiskit_result(
