@@ -263,3 +263,37 @@ class QuantumProgram:
             raise Exception(
                 "unsupported unserialization:", self.serialization_format, e
             )
+
+    def to_cudaq_kernel(self) -> "cudaq.Kernel":
+        try:
+            import qbraid
+            import cudaq
+        except ImportError:
+            raise Exception("qbraid or cudaq not installed")
+
+        serialization = self.serialization
+
+        try:
+            if self.compression_format == CompressionFormat.ZLIB_BASE64_V1:
+                serialization = zlib_to_str(serialization)
+
+            if self.serialization_format in [
+                QuantumProgramSerializationFormat.QASM_V2,
+            ]:
+                from qbraid.transpiler.conversions.qasm2 import qasm2_to_qasm3
+
+                obj_qasm3 = qasm2_to_qasm3(serialization)
+            elif self.serialization_format in [
+                QuantumProgramSerializationFormat.QASM_V3,
+            ]:
+                obj_qasm3 = serialization
+
+            from qbraid.transpiler.conversions.openqasm3 import openqasm3_to_cudaq
+
+            kernel = openqasm3_to_cudaq(obj_qasm3)
+        except Exception as e:
+            raise Exception(
+                "unsupported unserialization:", self.serialization_format, e
+            )
+
+        return kernel
