@@ -224,6 +224,7 @@ class QuantumProgramResult:
                     stride += 1
 
                     local_counts = {}
+                    memory = []
                     # Each entry is a triplet: [packed_value, bit_size, count]
                     for _ in range(num_bitstrings):
                         bitstring_as_long = data[stride]
@@ -232,26 +233,27 @@ class QuantumProgramResult:
 
                         bs = __long_to_bitstring(bitstring_as_long, size_of_bitstring)
                         local_counts[bs] = count
+                        memory.extend([bs] * count)
                         stride += 3
 
                     all_results[name] = local_counts
 
-                return all_results
+                return all_results, memory
 
-            parsed_data = __deserialize_to_dict(serialization)
+            parsed_data, memory = __deserialize_to_dict(serialization)
             experiment_results = []
 
             for reg_name, counts in parsed_data.items():
                 shots = sum(counts.values())
 
                 # Encapsulate data in Qiskit's expected format
-                data_payload = ExperimentResultData(counts=counts)
+                data_payload = ExperimentResultData(counts=counts, memory=memory)
 
                 exp_res = ExperimentResult(
                     shots=shots,
                     success=True,
                     data=data_payload,
-                    header={"name": reg_name},
+                    header={"name": reg_name, "memory": True},
                     status="Done",
                 )
                 experiment_results.append(exp_res)
