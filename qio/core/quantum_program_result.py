@@ -187,6 +187,83 @@ class QuantumProgramResult:
             return Result.from_dict(data)
         elif (
             self.serialization_format
+            == QuantumProgramResultSerializationFormat.CUDAQ_SAMPLE_RESULT_JSON_V1
+        ):
+
+            def _deserialize_cudaq_array(data: List[int]) -> Dict[str, Dict[str, int]]:
+                """
+                Parses a list of integers representing a serialized cudaq::sample_result.
+
+                Structure expected:
+                [name_len, name_chars..., map_size, [bitstring_len, bitstring_chars..., count]...]
+                """
+                stride = 0
+                parsed_results = {}
+
+                while stride < len(data):
+                    # 1. Extract the Register Name
+                    name_len = data[stride]
+                    stride += 1
+                    name = "".join(
+                        chr(data[i]) for i in range(stride, stride + name_len)
+                    )
+                    stride += name_len
+
+                    # 2. Extract the Counts Map for this register
+                    # (Matches ExecutionResult serialization logic)
+                    map_size = data[stride]
+                    stride += 1
+
+                    counts = {}
+                    for _ in range(map_size):
+                        # Extract Bitstring Key
+                        bit_len = data[stride]
+                        stride += 1
+                        bitstring = "".join(
+                            chr(data[i]) for i in range(stride, stride + bit_len)
+                        )
+                        stride += bit_len
+
+                        # Extract Count Value
+                        count_val = data[stride]
+                        stride += 1
+                        counts[bitstring] = count_val
+
+                    parsed_results[name] = counts
+
+                return parsed_results
+
+            parsed_data = _deserialize_cudaq_array(data)
+            experiment_results = []
+
+            for reg_name, counts in parsed_data.items():
+                # Calculate total shots for this register
+                shots = sum(counts.values())
+
+                # Format counts for Qiskit (Qiskit prefers hex or bitstrings)
+                # We keep bitstrings as provided by CUDA-Q
+                data_payload = ExperimentResultData(counts=counts)
+
+                # Create an ExperimentResult for each register
+                exp_res = ExperimentResult(
+                    shots=shots,
+                    success=True,
+                    data=data_payload,
+                    header={"name": reg_name},
+                )
+                experiment_results.append(exp_res)
+
+            data = {
+                "success": True,
+                "results": experiment_results,
+            }
+
+            if kwargs:
+                data.update(kwargs)
+
+            return Result.from_dict(data)
+        elif (
+            self.serialization_format
             == QuantumProgramResultSerializationFormat.CIRQ_RESULT_JSON_V1
         ):
             T = TypeVar("T")

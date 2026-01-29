@@ -51,5 +51,9 @@ def test_global_cudaq_flow():
     assert cudaq_result.most_probable() == uncomp_cudaq_result.most_probable()
     assert cudaq_result.serialize() == uncomp_cudaq_result.serialize()
 
+    qiskit_result = compressed_qpr.to_qiskit_result()
+    assert qiskit_result is not None
+    print("cudaq result as qiskit result:", qiskit_result)
+
 
 test_global_cudaq_flow()
