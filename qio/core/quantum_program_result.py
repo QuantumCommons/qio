@@ -15,7 +15,7 @@ import json
 import collections
 import io
 
-from typing import Union, Sequence, Dict, Tuple, Callable, TypeVar, cast
+from typing import Union, Sequence, Dict, Tuple, Callable, TypeVar, cast, List
 from enum import Enum
 
 from dataclasses import dataclass
@@ -168,17 +168,17 @@ class QuantumProgramResult:
             CompressionFormat.ZLIB_BASE64_V1: lambda d: zlib_to_dict(d),
         }
 
-        result_dict = apply_uncompression[self.compression_format](self.serialization)
+        serialization = apply_uncompression[self.compression_format](self.serialization)
 
         if (
             self.serialization_format
             == QuantumProgramResultSerializationFormat.QISKIT_RESULT_JSON_V1
         ):
             data = {
-                "results": result_dict["results"],
-                "success": result_dict["success"],
-                "header": result_dict.get("header"),
-                "metadata": result_dict.get("metadata"),
+                "results": serialization["results"],
+                "success": serialization["success"],
+                "header": serialization.get("header"),
+                "metadata": serialization.get("metadata"),
             }
 
             if kwargs:
@@ -190,78 +190,83 @@ class QuantumProgramResult:
             == QuantumProgramResultSerializationFormat.CUDAQ_SAMPLE_RESULT_JSON_V1
         ):
 
-            def _deserialize_cudaq_array(data: List[int]) -> Dict[str, Dict[str, int]]:
+            def __long_to_bitstring(val: int, size: int) -> str:
                 """
-                Parses a list of integers representing a serialized cudaq::sample_result.
+                Equivalent to the C++ longToBitString.
+                Converts an integer to a binary string padded to the correct bit length.
+                """
+                # Format to binary, remove '0b' prefix, and pad with leading zeros
+                return bin(val)[2:].zfill(size)
 
-                Structure expected:
-                [name_len, name_chars..., map_size, [bitstring_len, bitstring_chars..., count]...]
+            def __extract_name(data: List[int], stride: int) -> Tuple[str, int]:
+                """Extracts a string (register name) from the data array."""
+                n_chars = data[stride]
+                stride += 1
+                name = "".join(chr(data[i]) for i in range(stride, stride + n_chars))
+                stride += n_chars
+
+                return name, stride
+
+            def __deserialize_to_dict(data: List[int]) -> Dict[str, Dict[str, int]]:
+                """
+                Parses the integer array into a dictionary of registers and their counts.
+                Matches the logic of ExecutionResult::deserialize and deserializeCounts.
                 """
                 stride = 0
-                parsed_results = {}
+                all_results = {}
 
                 while stride < len(data):
-                    # 1. Extract the Register Name
-                    name_len = data[stride]
-                    stride += 1
-                    name = "".join(
-                        chr(data[i]) for i in range(stride, stride + name_len)
-                    )
-                    stride += name_len
+                    # 1. Extract Register Name
+                    name, stride = __extract_name(data, stride)
 
-                    # 2. Extract the Counts Map for this register
-                    # (Matches ExecutionResult serialization logic)
-                    map_size = data[stride]
+                    # 2. Extract Counts (deserializeCounts logic)
+                    num_bitstrings = data[stride]
                     stride += 1
 
-                    counts = {}
-                    for _ in range(map_size):
-                        # Extract Bitstring Key
-                        bit_len = data[stride]
-                        stride += 1
-                        bitstring = "".join(
-                            chr(data[i]) for i in range(stride, stride + bit_len)
-                        )
-                        stride += bit_len
+                    local_counts = {}
+                    # Each entry is a triplet: [packed_value, bit_size, count]
+                    for _ in range(num_bitstrings):
+                        bitstring_as_long = data[stride]
+                        size_of_bitstring = data[stride + 1]
+                        count = data[stride + 2]
 
-                        # Extract Count Value
-                        count_val = data[stride]
-                        stride += 1
-                        counts[bitstring] = count_val
+                        bs = __long_to_bitstring(bitstring_as_long, size_of_bitstring)
+                        local_counts[bs] = count
+                        stride += 3
 
-                    parsed_results[name] = counts
+                    all_results[name] = local_counts
 
-                return parsed_results
+                return all_results
 
-            parsed_data = _deserialize_cudaq_array(data)
+            parsed_data = __deserialize_to_dict(serialization)
             experiment_results = []
 
             for reg_name, counts in parsed_data.items():
-                # Calculate total shots for this register
                 shots = sum(counts.values())
 
-                # Format counts for Qiskit (Qiskit prefers hex or bitstrings)
-                # We keep bitstrings as provided by CUDA-Q
+                # Encapsulate data in Qiskit's expected format
                 data_payload = ExperimentResultData(counts=counts)
 
-                # Create an ExperimentResult for each register
                 exp_res = ExperimentResult(
                     shots=shots,
                     success=True,
                     data=data_payload,
                     header={"name": reg_name},
+                    status="Done",
                 )
                 experiment_results.append(exp_res)
 
-            data = {
+            result_data = {
                 "success": True,
                 "results": experiment_results,
             }
 
             if kwargs:
-                data.update(kwargs)
+                result_data.update(kwargs)
 
-            return Result.from_dict(data)
+            print(result_data)
+
+            return Result.from_dict(result_data)
         elif (
             self.serialization_format
             == QuantumProgramResultSerializationFormat.CIRQ_RESULT_JSON_V1
@@ -386,7 +391,7 @@ class QuantumProgramResult:
             kwargs = kwargs or {}
 
             return Result(
-                results=[__make_expresult_from_cirq_result(result_dict)], **kwargs
+                results=[__make_expresult_from_cirq_result(serialization)], **kwargs
             )
         else:
             raise Exception(
