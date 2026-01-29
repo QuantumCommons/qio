@@ -287,6 +287,10 @@ class QuantumProgram:
                 QuantumProgramSerializationFormat.QASM_V3,
             ]:
                 obj_qasm3 = serialization
+            else:
+                raise Exception(
+                    "unsupported serialization format:", self.serialization_format
+                )
 
             from qbraid.transpiler.conversions.openqasm3 import openqasm3_to_cudaq
 
