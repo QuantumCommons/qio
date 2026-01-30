@@ -9,3 +9,4 @@ qsimcirq
 numpy
 qiskit-qasm3-import
 ply
+cudaq
