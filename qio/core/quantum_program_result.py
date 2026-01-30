@@ -258,17 +258,7 @@ class QuantumProgramResult:
                 )
                 experiment_results.append(exp_res)
 
-            result_data = {
-                "success": True,
-                "results": experiment_results,
-            }
-
-            if kwargs:
-                result_data.update(kwargs)
-
-            print(result_data)
-
-            return Result.from_dict(result_data)
+            return Result(results=experiment_results, **kwargs)
         elif (
             self.serialization_format
             == QuantumProgramResultSerializationFormat.CIRQ_RESULT_JSON_V1
