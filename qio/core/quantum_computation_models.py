@@ -46,15 +46,15 @@ class QuantumComputationModel:
 
     @classmethod
     def from_json_dict(cls, data: Dict) -> "QuantumComputationModel":
-        return QuantumComputationModel.schema().loads(data)
+        return QuantumComputationModel.from_dict(data)
 
     def to_json_dict(self) -> Dict:
-        return QuantumComputationModel.schema().dumps(self)
+        return self.to_dict()
 
     @classmethod
-    def from_json_str(cls, stro: str) -> "QuantumComputationModel":
-        while isinstance(stro, str):
-            data = json.loads(stro)
+    def from_json_str(cls, data: str) -> "QuantumComputationModel":
+        while isinstance(data, str):
+            data = json.loads(data)
         return cls.from_json_dict(data)
 
     def to_json_str(self) -> str:
@@ -69,15 +69,15 @@ class QuantumComputationParameters:
 
     @classmethod
     def from_json_dict(cls, data: Union[Dict, str]) -> "QuantumComputationParameters":
-        return QuantumComputationParameters.schema().loads(data)
+        return QuantumComputationParameters.from_dict(data)
 
     def to_json_dict(self) -> Dict:
-        return QuantumComputationParameters.schema().dumps(self)
+        return self.to_dict()
 
     @classmethod
-    def from_json_str(cls, stro: str) -> "QuantumComputationParameters":
-        while isinstance(stro, str):
-            data = json.loads(stro)
+    def from_json_str(cls, data: str) -> "QuantumComputationParameters":
+        while isinstance(data, str):
+            data = json.loads(data)
         return cls.from_json_dict(data)
 
     def to_json_str(self) -> str:

@@ -16,7 +16,7 @@ import collections
 import io
 
 from typing import Union, Sequence, Dict, Tuple, Callable, TypeVar, cast, List
-from enum import Enum
+from enum import IntEnum
 
 from dataclasses import dataclass
 from dataclasses_json import dataclass_json
@@ -24,7 +24,7 @@ from dataclasses_json import dataclass_json
 from qio.utils import dict_to_zlib, zlib_to_dict, CompressionFormat
 
 
-class QuantumProgramResultSerializationFormat(Enum):
+class QuantumProgramResultSerializationFormat(IntEnum):
     UNKOWN_SERIALIZATION_FORMAT = 0
     CIRQ_RESULT_JSON_V1 = 1
     QISKIT_RESULT_JSON_V1 = 2
@@ -39,16 +39,16 @@ class QuantumProgramResult:
     serialization: str
 
     @classmethod
-    def from_json_dict(cls, data: Union[Dict, str]) -> "QuantumProgramResult":
-        return QuantumProgramResult.schema().loads(data)
+    def from_json_dict(cls, data: Dict) -> "QuantumProgramResult":
+        return QuantumProgramResult.from_dict(data)
 
     def to_json_dict(self) -> Dict:
-        return QuantumProgramResult.schema().dumps(self)
+        return self.to_dict()
 
     @classmethod
-    def from_json_str(cls, stro: str) -> "QuantumProgramResult":
-        while isinstance(stro, str):
-            data = json.loads(stro)
+    def from_json_str(cls, data: str) -> "QuantumProgramResult":
+        while isinstance(data, str):
+            data = json.loads(data)
         return cls.from_json_dict(data)
 
     def to_json_str(self) -> str:

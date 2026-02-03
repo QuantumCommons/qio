@@ -43,16 +43,16 @@ class QuantumProgram:
     serialization: str
 
     @classmethod
-    def from_json_dict(cls, data: Union[Dict, str]) -> "QuantumProgram":
-        return QuantumProgram.schema().loads(data)
+    def from_json_dict(cls, data: Dict) -> "QuantumProgram":
+        return QuantumProgram.from_dict(data)
 
     def to_json_dict(self) -> Dict:
-        return QuantumProgram.schema().dumps(self)
+        return self.to_dict()
 
     @classmethod
-    def from_json_str(cls, stro: str) -> "QuantumProgram":
-        while isinstance(stro, str):
-            data = json.loads(stro)
+    def from_json_str(cls, data: str) -> "QuantumProgram":
+        while isinstance(data, str):
+            data = json.loads(data)
         return cls.from_json_dict(data)
 
     def to_json_str(self) -> str:

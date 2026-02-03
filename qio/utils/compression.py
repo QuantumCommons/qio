@@ -3,10 +3,10 @@ import zlib
 import base64
 
 from typing import Dict
-from enum import Enum
+from enum import IntEnum
 
 
-class CompressionFormat(Enum):
+class CompressionFormat(IntEnum):
     UNKOWN_COMPRESSION_FORMAT = 0
     NONE = 1
     ZLIB_BASE64_V1 = 2

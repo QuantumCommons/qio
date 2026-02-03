@@ -14,7 +14,7 @@
 import json
 
 from typing import Dict, Union
-from enum import Enum
+from enum import IntEnum
 
 from dataclasses import dataclass
 from dataclasses_json import dataclass_json
@@ -22,7 +22,7 @@ from dataclasses_json import dataclass_json
 from qio.utils import dict_to_zlib, zlib_to_dict, CompressionFormat
 
 
-class QuantumNoiseModelSerializationFormat(Enum):
+class QuantumNoiseModelSerializationFormat(IntEnum):
     UNKOWN_SERIALIZATION_FORMAT = 0
     QISKIT_AER_JSON_V1 = 1
     # TODO: support Qsim/Cirq noise model
@@ -36,16 +36,16 @@ class QuantumNoiseModel:
     serialization: str
 
     @classmethod
-    def from_json_dict(cls, data: Union[Dict, str]) -> "QuantumNoiseModel":
-        return QuantumNoiseModel.schema().loads(data)
+    def from_json_dict(cls, data: Dict) -> "QuantumNoiseModel":
+        return QuantumNoiseModel.from_dict(data)
 
     def to_json_dict(self) -> Dict:
-        return QuantumNoiseModel.schema().dumps(self)
+        return self.to_dict()
 
     @classmethod
-    def from_json_str(cls, stro: str) -> "QuantumNoiseModel":
-        while isinstance(stro, str):
-            data = json.loads(stro)
+    def from_json_str(cls, data: str) -> "QuantumNoiseModel":
+        while isinstance(data, str):
+            data = json.loads(data)
         return cls.from_json_dict(data)
 
     def to_json_str(self) -> str:
