@@ -50,8 +50,9 @@ class QuantumProgram:
         return QuantumProgram.schema().dumps(self)
 
     @classmethod
-    def from_json_str(cls, str: str) -> "QuantumProgram":
-        data = json.loads(str)
+    def from_json_str(cls, stro: str) -> "QuantumProgram":
+        while isinstance(stro, str):
+            data = json.loads(str)
         return cls.from_json_dict(data)
 
     def to_json_str(self) -> str:
@@ -277,15 +278,11 @@ class QuantumProgram:
             if self.compression_format == CompressionFormat.ZLIB_BASE64_V1:
                 serialization = zlib_to_str(serialization)
 
-            if self.serialization_format in [
-                QuantumProgramSerializationFormat.QASM_V2,
-            ]:
+            if self.serialization_format == QuantumProgramSerializationFormat.QASM_V2:
                 from qbraid.transpiler.conversions.qasm2 import qasm2_to_qasm3
 
                 obj_qasm3 = qasm2_to_qasm3(serialization)
-            elif self.serialization_format in [
-                QuantumProgramSerializationFormat.QASM_V3,
-            ]:
+            elif self.serialization_format == QuantumProgramSerializationFormat.QASM_V3:
                 obj_qasm3 = serialization
             else:
                 raise Exception(

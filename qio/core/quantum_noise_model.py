@@ -43,8 +43,9 @@ class QuantumNoiseModel:
         return QuantumNoiseModel.schema().dumps(self)
 
     @classmethod
-    def from_json_str(cls, str: str) -> "QuantumNoiseModel":
-        data = json.loads(str)
+    def from_json_str(cls, stro: str) -> "QuantumNoiseModel":
+        while isinstance(stro, str):
+            data = json.loads(str)
         return cls.from_json_dict(data)
 
     def to_json_str(self) -> str:
