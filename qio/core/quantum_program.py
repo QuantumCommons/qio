@@ -14,8 +14,8 @@
 import json
 import re
 
-from enum import Enum
-from typing import Dict, Union
+from enum import IntEnum
+from typing import Dict
 from collections import defaultdict
 
 from dataclasses import dataclass
@@ -24,7 +24,7 @@ from dataclasses_json import dataclass_json
 from qio.utils import CompressionFormat, zlib_to_str, str_to_zlib, sanitize_qasm_str
 
 
-class QuantumProgramSerializationFormat(Enum):
+class QuantumProgramSerializationFormat(IntEnum):
     UNKOWN_SERIALIZATION_FORMAT = 0
     QASM_V1 = 1
     QASM_V2 = 2
