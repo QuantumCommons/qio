@@ -48,7 +48,7 @@ class QuantumProgramResult:
     @classmethod
     def from_json_str(cls, stro: str) -> "QuantumProgramResult":
         while isinstance(stro, str):
-            data = json.loads(str)
+            data = json.loads(stro)
         return cls.from_json_dict(data)
 
     def to_json_str(self) -> str:
