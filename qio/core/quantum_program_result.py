@@ -481,8 +481,9 @@ class QuantumProgramResult:
                 counts = experiment.get("data", {}).get("counts", {})
                 header = experiment.get("header", {})
                 qreg_sizes = header.get("qreg_sizes", [])
+                num_qubits = header.get("n_qubits", None)
 
-                if qreg_sizes and len(qreg_sizes) > 0:
+                if not num_qubits and qreg_sizes and len(qreg_sizes) > 0:
                     num_qubits = qreg_sizes[0][1]
                 else:
                     memory = experiment.get("memory", {})
