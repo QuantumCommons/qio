@@ -273,14 +273,8 @@ class QuantumProgram:
             from openqasm3 import ast
 
             from cudaq import PyKernel, QuakeValue
-
-            from qbraid.programs.typer import QasmStringType
-            from qbraid.transpiler.exceptions import ProgramConversionError
-            from qbraid.transpiler.conversions.openqasm3.openqasm3_to_cudaq import (
-                make_gate_kernel,
-            )
-        except ImportError:
-            raise Exception("qbraid or cudaq not installed")
+        except ImportError as e:
+            raise Exception(f"missing import: {e}")
 
         serialization = self.serialization
 
@@ -289,9 +283,9 @@ class QuantumProgram:
                 serialization = zlib_to_str(serialization)
 
             if self.serialization_format == QuantumProgramSerializationFormat.QASM_V2:
-                from qbraid.transpiler.conversions.qasm2 import qasm2_to_qasm3
+                qasm_module = pyqasm.loads(serialization)
+                obj_qasm3 = qasm_module.to_qasm3(as_str=True)
 
-                obj_qasm3 = qasm2_to_qasm3(serialization)
             elif self.serialization_format == QuantumProgramSerializationFormat.QASM_V3:
                 obj_qasm3 = serialization
             else:
@@ -299,7 +293,50 @@ class QuantumProgram:
                     "unsupported serialization format:", self.serialization_format
                 )
 
-            def _openqasm3_to_cudaq(program: QasmStringType | ast.Program) -> PyKernel:
+            def _make_gate_kernel(name: str, targs: tuple[type]) -> PyKernel:
+                """Returns CUDA-Q kernel for pure standard gates (no modifiers - ctrl or adj)."""
+
+                if name in [
+                    "x",
+                    "y",
+                    "z",
+                    "rx",
+                    "ry",
+                    "rz",
+                    "h",
+                    "s",
+                    "t",
+                    "sdg",
+                    "tdg",
+                    "u3",
+                    "i",
+                    "id",
+                    "iden",
+                ]:
+                    size = 1
+                elif name in ["swap"]:
+                    size = 2
+                else:
+                    raise Exception(f"Unsupported gate: {name}")
+
+                kernel, *qparams = cudaq.make_kernel(
+                    *[cudaq.qubit for _ in range(size)], *targs
+                )
+                qrefs, qargs = qparams[:size], qparams[size:]
+
+                if name in ["i", "id", "iden"]:
+                    return kernel
+
+                op = getattr(kernel, name)
+
+                if len(targs) > 0:
+                    op(*qargs, *qrefs)
+                else:
+                    op(*qrefs)
+
+                return kernel
+
+            def _openqasm3_to_cudaq(program: str | ast.Program) -> PyKernel:
                 """Returns a CUDA-Q kernel representing the input OpenQASM program.
 
                 Args:
@@ -308,15 +345,11 @@ class QuantumProgram:
                 Returns:
                     kernel: CUDA-Q kernel equivalent to input OpenQASM string.
                 """
-                try:
-                    module = pyqasm.loads(program)
-                    module.validate()
-                except Exception as e:
-                    raise ProgramConversionError(
-                        "QASM program is not well-formed."
-                    ) from e
 
+                module = pyqasm.loads(program)
+                module.validate()
                 module.unroll()
+
                 program = module.unrolled_ast
 
                 kernel: PyKernel = cudaq.make_kernel()
@@ -331,7 +364,7 @@ class QuantumProgram:
                     targs = list(
                         map(lambda x: float if isinstance(x, type(int)) else x, targs)
                     )
-                    gate_kernels[name] = make_gate_kernel(name, targs)
+                    gate_kernels[name] = _make_gate_kernel(name, targs)
                     return gate_kernels[name]
 
                 def qubit_lookup(
@@ -359,7 +392,7 @@ class QuantumProgram:
                 for statement in program.statements:
                     if isinstance(statement, ast.Include):
                         if statement.filename not in {"stdgates.inc", "qelib1.inc"}:
-                            raise ProgramConversionError(
+                            raise Exception(
                                 f"Custom includes are unsupported: {statement}"
                             )
                     elif isinstance(statement, ast.QubitDeclaration):
@@ -431,9 +464,7 @@ class QuantumProgram:
                                 kernel.apply_call(gate, *qubit_refs, *args)
 
                     else:
-                        raise ProgramConversionError(
-                            f"Unsupported statement: {statement}"
-                        )
+                        raise Exception(f"Unsupported statement: {statement}")
 
                 return kernel
 
