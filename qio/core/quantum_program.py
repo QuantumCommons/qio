@@ -271,7 +271,6 @@ class QuantumProgram:
             import pyqasm
 
             from openqasm3 import ast
-
             from cudaq import PyKernel, QuakeValue
         except ImportError as e:
             raise Exception(f"missing import: {e}")

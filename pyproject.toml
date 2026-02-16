@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "qio"
-version = "0.1.30"
+version = "0.1.31"
 description = "Common quantum computing objects description and conversion library"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -20,6 +20,8 @@ classifiers = [
 dependencies = [
     "dataclasses",
     "dataclasses-json",
+    "openqasm3[parser]>=0.4.0",
+    "pyqasm>=0.5.0,<1.1.0",
 ]
 
 [tool.setuptools_scm]
