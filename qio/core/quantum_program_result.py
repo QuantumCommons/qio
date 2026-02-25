@@ -339,6 +339,10 @@ class QuantumProgramResult:
 
                 return hex(integer_value)
 
+            def __make_bin_from_result_array(result: Tuple):
+                str_value = "".join(map(str, result))
+                return str_value
+
             def __measurements(records: Dict):
                 measurements = {}
                 for key, data in records.items():
@@ -374,7 +378,7 @@ class QuantumProgramResult:
                     success=True,
                     data=ExperimentResultData(
                         counts={
-                            __make_hex_from_result_array(key): value
+                            __make_bin_from_result_array(key): value
                             for key, value in histogram.items()
                         },
                         memory=memory,
