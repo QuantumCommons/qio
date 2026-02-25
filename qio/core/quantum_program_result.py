@@ -175,8 +175,32 @@ class QuantumProgramResult:
             self.serialization_format
             == QuantumProgramResultSerializationFormat.QISKIT_RESULT_JSON_V1
         ):
+            results = serialization["results"]
+
+            def _hex_to_bitstring(value, nb_bits):
+                mask = (1 << nb_bits) - 1
+                return format(value & mask, f"0{nb_bits}b")
+
+            for experiment in results:
+                exp_data = experiment.get("data", {})
+                counts = exp_data.get("counts", None)
+                n_qubits = experiment["header"]["n_qubits"]
+
+                if counts:
+                    new_counts = {}
+
+                    for bitstring, count in counts.items():
+                        if bitstring.startswith("0x"):
+                            nbits = _hex_to_bitstring(int(bitstring, 16), n_qubits)
+                        else:
+                            nbits = bitstring
+
+                        new_counts[nbits] = count
+
+                    exp_data["counts"] = new_counts
+
             data = {
-                "results": serialization["results"],
+                "results": results,
                 "success": serialization["success"],
                 "header": serialization.get("header"),
                 "metadata": serialization.get("metadata"),
