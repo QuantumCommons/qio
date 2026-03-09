@@ -1,5 +1,3 @@
-import qiskit
-
 from qiskit.result import Result
 from qiskit.result.models import ExperimentResult, ExperimentResultData
 
