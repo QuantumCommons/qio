@@ -12,10 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import json
-import collections
-import io
 
-from typing import Union, Sequence, Dict, Tuple, Callable, TypeVar, cast, List
+from typing import Union, Dict
 from enum import IntEnum
 
 from dataclasses import dataclass
@@ -66,7 +64,9 @@ class QuantumProgramResult:
         sample_result: "cudaq.SampleResult",
         compression_format: QuantumProgramResultCompressionFormat = QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1,
     ) -> "QuantumProgramResult":
-        from qio.utils.conversion.program_result.cudaq_sample_to_dict import convert as cudaq_sample_to_dict
+        from qio.utils.conversion.program_result.cudaq_sample_to_dict import (
+            convert as cudaq_sample_to_dict,
+        )
 
         compression_format = (
             QuantumProgramResultCompressionFormat.NONE
@@ -76,10 +76,8 @@ class QuantumProgramResult:
         )
 
         apply_compression = {
-            QuantumProgramResultCompressionFormat.NONE: lambda d: json.dumps(d),
-            QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1: lambda d: dict_to_zlib(
-                d
-            ),
+            QuantumProgramResultCompressionFormat.NONE: json.dumps,
+            QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1: dict_to_zlib,
         }
 
         try:
@@ -96,11 +94,13 @@ class QuantumProgramResult:
             raise Exception("unsupport serialization:", compression_format, e)
 
     def to_cudaq_sample_result(self, **kwargs) -> "cudaq.SampleResult":
-        from qio.utils.conversion.program_result.dict_to_cudaq_sample import convert as dict_to_cudaq_sample
+        from qio.utils.conversion.program_result.dict_to_cudaq_sample import (
+            convert as dict_to_cudaq_sample,
+        )
 
         apply_uncompression = {
-            QuantumProgramResultCompressionFormat.NONE: lambda d: json.loads(d),
-            QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1: lambda d: zlib_to_dict(d),
+            QuantumProgramResultCompressionFormat.NONE: json.loads,
+            QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1: zlib_to_dict,
         }
 
         serialized_sample_result = apply_uncompression[self.compression_format](
@@ -112,7 +112,9 @@ class QuantumProgramResult:
                 QuantumProgramResultSerializationFormat.CUDAQ_SAMPLE_RESULT_JSON_V1: dict_to_cudaq_sample,
             }
 
-            return apply_unserialization[self.serialization_format](serialized_sample_result)
+            return apply_unserialization[self.serialization_format](
+                serialized_sample_result
+            )
         except Exception as e:
             raise Exception("unsupport unserialization:", self.serialization_format, e)
 
@@ -122,7 +124,9 @@ class QuantumProgramResult:
         qiskit_result: "qiskit.result.Result",
         compression_format: QuantumProgramResultCompressionFormat = QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1,
     ) -> "QuantumProgramResult":
-        from qio.utils.conversion.program_result.qiskit_to_dict import convert as qiskit_to_dict_convert
+        from qio.utils.conversion.program_result.qiskit_to_dict import (
+            convert as qiskit_to_dict_convert,
+        )
 
         qiskit_result_dict = qiskit_to_dict_convert(qiskit_result)
 
@@ -147,10 +151,8 @@ class QuantumProgramResult:
         )
 
         apply_compression = {
-            QuantumProgramResultCompressionFormat.NONE: lambda d: json.dumps(d),
-            QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1: lambda d: dict_to_zlib(
-                d
-            ),
+            QuantumProgramResultCompressionFormat.NONE: json.dumps,
+            QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1: dict_to_zlib,
         }
 
         try:
@@ -163,13 +165,19 @@ class QuantumProgramResult:
             raise Exception("unsupport serialization:", compression_format, e)
 
     def to_qiskit_result(self, **kwargs) -> "qiskit.result.Result":
-        from qio.utils.conversion.program_result.dict_to_qiskit import convert as dict_to_qiskit_convert
-        from qio.utils.conversion.program_result.cirq_to_qiskit import convert as cirq_to_qiskit_convert
-        from qio.utils.conversion.program_result.cudaq_sample_to_qiskit import convert as cudaq_sample_to_qiskit_convert
+        from qio.utils.conversion.program_result.dict_to_qiskit import (
+            convert as dict_to_qiskit_convert,
+        )
+        from qio.utils.conversion.program_result.cirq_to_qiskit import (
+            convert as cirq_to_qiskit_convert,
+        )
+        from qio.utils.conversion.program_result.cudaq_sample_to_qiskit import (
+            convert as cudaq_sample_to_qiskit_convert,
+        )
 
         apply_uncompression = {
-            QuantumProgramResultCompressionFormat.NONE: lambda d: json.loads(d),
-            QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1: lambda d: zlib_to_dict(d),
+            QuantumProgramResultCompressionFormat.NONE: json.loads,
+            QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1: zlib_to_dict,
         }
 
         serialization = apply_uncompression[self.compression_format](self.serialization)
@@ -181,7 +189,9 @@ class QuantumProgramResult:
                 QuantumProgramResultSerializationFormat.CIRQ_RESULT_JSON_V1: cudaq_sample_to_qiskit_convert,
             }
 
-            return apply_unserialization[self.serialization_format](serialization, **kwargs)
+            return apply_unserialization[self.serialization_format](
+                serialization, **kwargs
+            )
 
         except Exception as e:
             raise Exception(
@@ -194,7 +204,9 @@ class QuantumProgramResult:
         cirq_result: "cirq.Result",
         compression_format: QuantumProgramResultCompressionFormat = QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1,
     ) -> "QuantumProgramResult":
-        from qio.utils.conversion.program_result.cirq_to_dict import convert as cirq_to_dict_convert
+        from qio.utils.conversion.program_result.cirq_to_dict import (
+            convert as cirq_to_dict_convert,
+        )
 
         cirq_result_dict = cirq_to_dict_convert(cirq_result)
 
@@ -232,32 +244,32 @@ class QuantumProgramResult:
         )
 
     def to_cirq_result(self, **kwargs) -> "cirq.Result":
-        try:
-            from cirq import ResultDict
-        except ImportError:
-            raise Exception("Cirq is not installed")
+        from qio.utils.conversion.program_result.dict_to_cirq import (
+            convert as dict_to_cirq_convert,
+        )
+        from qio.utils.conversion.program_result.qiskit_to_cirq import (
+            convert as qiskit_to_cirq_convert,
+        )
 
         apply_uncompression = {
-            QuantumProgramResultCompressionFormat.NONE: lambda d: json.loads(d),
-            QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1: lambda d: zlib_to_dict(
-                d
-            ),
+            QuantumProgramResultCompressionFormat.NONE: json.loads,
+            QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1: zlib_to_dict,
         }
 
         result_dict = apply_uncompression[self.compression_format](self.serialization)
 
-        if kwargs:
-            result_dict.update(kwargs)
+        try:
 
-        if (
-            self.serialization_format
-            == QuantumProgramResultSerializationFormat.CIRQ_RESULT_JSON_V1
-        ):
+            apply_unserialization = {
+                QuantumProgramResultSerializationFormat.CIRQ_RESULT_JSON_V1: dict_to_cirq_convert,
+                QuantumProgramResultSerializationFormat.QISKIT_RESULT_JSON_V1: qiskit_to_cirq_convert,
+            }
 
-        elif (
-            self.serialization_format
-            == QuantumProgramResultSerializationFormat.QISKIT_RESULT_JSON_V1
-        ):
+            return apply_unserialization[self.serialization_format](
+                result_dict, **kwargs
+            )
 
-
-        return cirq_result
+        except Exception as e:
+            raise Exception(
+                "unsupported serialization format:", self.serialization_format
+            )

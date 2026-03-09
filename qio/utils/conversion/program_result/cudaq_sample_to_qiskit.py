@@ -1,4 +1,8 @@
-import qiskit
+from qiskit.result import Result
+from qiskit.result.models import ExperimentResult, ExperimentResultData
+
+from typing import Dict, List, Tuple
+
 
 def _long_to_bitstring(val: int, size: int) -> str:
     """
@@ -8,6 +12,7 @@ def _long_to_bitstring(val: int, size: int) -> str:
     # Format to binary, remove '0b' prefix, and pad with leading zeros
     return bin(val)[2:].zfill(size)
 
+
 def _extract_name(data: List[int], stride: int) -> Tuple[str, int]:
     """Extracts a string (register name) from the data array."""
     n_chars = data[stride]
@@ -16,6 +21,7 @@ def _extract_name(data: List[int], stride: int) -> Tuple[str, int]:
     stride += n_chars
 
     return name, stride
+
 
 def _deserialize_to_dict(data: List[int]) -> Dict[str, Dict[str, int]]:
     """
@@ -50,8 +56,9 @@ def _deserialize_to_dict(data: List[int]) -> Dict[str, Dict[str, int]]:
 
     return all_results, memory
 
-def convert() -> :
-    parsed_data, memory = __deserialize_to_dict(serialization)
+
+def convert(result_str: str, **kwargs) -> Result:
+    parsed_data, memory = _deserialize_to_dict(result_str)
     experiment_results = []
 
     for reg_name, counts in parsed_data.items():
@@ -69,4 +76,5 @@ def convert() -> :
         )
         experiment_results.append(exp_res)
 
+    kwargs = kwargs or {}
     return Result(results=experiment_results, **kwargs)
