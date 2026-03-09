@@ -1,5 +1,4 @@
 import cudaq
-import random
 
 from qio.core import QuantumProgramResult, QuantumProgramResultCompressionFormat
 

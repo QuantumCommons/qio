@@ -116,7 +116,7 @@ class QuantumProgramResult:
                 serialized_sample_result
             )
         except Exception as e:
-            raise Exception("unsupport unserialization:", self.serialization_format, e)
+            raise Exception("unsupported unserialization:", self.serialization_format, e)
 
     @classmethod
     def from_qiskit_result(
@@ -162,7 +162,7 @@ class QuantumProgramResult:
                 serialization=apply_compression[compression_format](qiskit_result_dict),
             )
         except Exception as e:
-            raise Exception("unsupport serialization:", compression_format, e)
+            raise Exception("unsupported serialization:", compression_format, e)
 
     def to_qiskit_result(self, **kwargs) -> "qiskit.result.Result":
         from qio.utils.conversion.program_result.dict_to_qiskit import (

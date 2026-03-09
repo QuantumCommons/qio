@@ -32,6 +32,7 @@ def _unpack_digits(
     buffer.seek(0)
     digits = np.load(buffer, allow_pickle=False)
     buffer.close()
+
     return digits
 
 
