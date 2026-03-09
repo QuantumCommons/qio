@@ -1,7 +1,9 @@
+from qiskit import qasm3, QuantumCircuit
+
 import re
 
 
-def sanitize_qasm_str(qasm_string: str) -> str:
+def _sanitize_qasm_str(qasm_string: str) -> str:
     """
     Parses an OpenQASM 3 string and corrects errors where single-qubit
     gates are applied to multiple qubits in a single line.
@@ -74,3 +76,7 @@ def sanitize_qasm_str(qasm_string: str) -> str:
         sanitized_lines.append(line)
 
     return "\n".join(sanitized_lines)
+
+
+def convert(qiskit_circuit: QuantumCircuit) -> str:
+    return _sanitize_qasm_str(qasm3.dumps(qiskit_circuit))

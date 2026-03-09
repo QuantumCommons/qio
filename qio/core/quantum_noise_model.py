@@ -19,13 +19,19 @@ from enum import IntEnum
 from dataclasses import dataclass
 from dataclasses_json import dataclass_json
 
-from qio.utils import dict_to_zlib, zlib_to_dict, CompressionFormat
+from qio.utils import dict_to_zlib, zlib_to_dict
 
 
 class QuantumNoiseModelSerializationFormat(IntEnum):
-    UNKOWN_SERIALIZATION_FORMAT = 0
+    UNKNOWN_SERIALIZATION_FORMAT = 0
     QISKIT_AER_JSON_V1 = 1
     # TODO: support Qsim/Cirq noise model
+
+
+class QuantumNoiseModelCompressionFormat(IntEnum):
+    UNKNOWN_COMPRESSION_FORMAT = 0
+    NONE = 1
+    ZLIB_BASE64_V1 = 2
 
 
 @dataclass_json

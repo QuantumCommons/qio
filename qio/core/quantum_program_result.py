@@ -25,10 +25,16 @@ from qio.utils import dict_to_zlib, zlib_to_dict, CompressionFormat
 
 
 class QuantumProgramResultSerializationFormat(IntEnum):
-    UNKOWN_SERIALIZATION_FORMAT = 0
+    UNKNOWN_SERIALIZATION_FORMAT = 0
     CIRQ_RESULT_JSON_V1 = 1
     QISKIT_RESULT_JSON_V1 = 2
     CUDAQ_SAMPLE_RESULT_JSON_V1 = 3
+
+
+class QuantumProgramResultCompressionFormat(IntEnum):
+    UNKNOWN_COMPRESSION_FORMAT = 0
+    NONE = 1
+    ZLIB_BASE64_V1 = 2
 
 
 @dataclass_json
