@@ -24,7 +24,7 @@ from qio.core import (
     ClientData,
 )
 
-from qio.utils.circuit import random_square_cirq_circuit
+from qio.utils.circuit_factory import random_square_cirq_circuit
 
 
 def test_global_cirq_flow():

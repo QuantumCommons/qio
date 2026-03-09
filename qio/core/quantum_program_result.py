@@ -116,7 +116,9 @@ class QuantumProgramResult:
                 serialized_sample_result
             )
         except Exception as e:
-            raise Exception("unsupported unserialization:", self.serialization_format, e)
+            raise Exception(
+                "unsupported unserialization:", self.serialization_format, e
+            )
 
     @classmethod
     def from_qiskit_result(
@@ -185,8 +187,8 @@ class QuantumProgramResult:
         try:
             apply_unserialization = {
                 QuantumProgramResultSerializationFormat.QISKIT_RESULT_JSON_V1: dict_to_qiskit_convert,
-                QuantumProgramResultSerializationFormat.CUDAQ_SAMPLE_RESULT_JSON_V1: cirq_to_qiskit_convert,
-                QuantumProgramResultSerializationFormat.CIRQ_RESULT_JSON_V1: cudaq_sample_to_qiskit_convert,
+                QuantumProgramResultSerializationFormat.CUDAQ_SAMPLE_RESULT_JSON_V1: cudaq_sample_to_qiskit_convert,
+                QuantumProgramResultSerializationFormat.CIRQ_RESULT_JSON_V1: cirq_to_qiskit_convert,
             }
 
             return apply_unserialization[self.serialization_format](
@@ -194,9 +196,7 @@ class QuantumProgramResult:
             )
 
         except Exception as e:
-            raise Exception(
-                "unsupported serialization format:", self.serialization_format
-            )
+            raise Exception("unsupported serialization:", self.serialization_format, e)
 
     @classmethod
     def from_cirq_result(
@@ -274,5 +274,5 @@ class QuantumProgramResult:
 
         except Exception as e:
             raise Exception(
-                "unsupported serialization format:", self.serialization_format
+                "unsupported unserialization:", self.serialization_format, e
             )
