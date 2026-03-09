@@ -291,7 +291,6 @@ class QuantumProgram:
             }
 
             return apply_unserialization[self.serialization_format](serialization)
-
         except Exception as e:
             raise Exception(
                 "unsupported unserialization:", self.serialization_format, e
