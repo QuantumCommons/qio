@@ -1,3 +1,16 @@
+# Copyright 2026 Scaleway, Aqora, Quantum Commons
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.from enum import Enum
 import cudaq
 import pyqasm
 
@@ -5,29 +18,70 @@ from openqasm3 import ast
 from cudaq import PyKernel, QuakeValue
 
 
+_ONE_QUBIT_GATES = {
+    "x",
+    "y",
+    "z",
+    "rx",
+    "ry",
+    "rz",
+    "h",
+    "s",
+    "t",
+    "sdg",
+    "tdg",
+    "u3",
+    "i",
+    "id",
+    "iden",
+}
+
+_TWO_QUBIT_GATES = {"swap"}
+
+# 3-qubit gates exposed as first-class CUDA-Q operations
+_THREE_QUBIT_GATES = {"ccx", "ccz", "cswap"}
+
+# Gates that can be the base of a c-prefixed controlled gate
+_CONTROLLABLE_BASE_GATES = _ONE_QUBIT_GATES | _TWO_QUBIT_GATES
+
+
+def _parse_controlled_name(name: str) -> tuple[int, str]:
+    """Detect multi-controlled gate names encoded as repeated 'c' prefixes.
+
+    Iteratively strips leading 'c' chars and checks whether the remainder
+    is a known controllable base gate.
+
+    Examples
+    --------
+    "cx"    → (1, "x")
+    "ccx"   → (2, "x")   ← Toffoli
+    "cccx"  → (3, "x")
+    "cswap" → (1, "swap") ← Fredkin
+    "h"     → (0, "h")   ← not a controlled gate
+
+    Returns
+    -------
+    (num_controls, base_gate_name)
+        num_controls == 0 means the name is *not* a c-prefixed controlled gate.
+    """
+    namel = name.lower()
+
+    for i in range(1, len(namel)):
+        if namel[:i] == "c" * i and namel[i:] in _CONTROLLABLE_BASE_GATES:
+            return i, namel[i:]
+
+    return 0, namel
+
+
 def _make_gate_kernel(name: str, targs: tuple[type]) -> PyKernel:
     """Returns CUDA-Q kernel for pure standard gates (no modifiers - ctrl or adj)."""
 
-    if name in [
-        "x",
-        "y",
-        "z",
-        "rx",
-        "ry",
-        "rz",
-        "h",
-        "s",
-        "t",
-        "sdg",
-        "tdg",
-        "u3",
-        "i",
-        "id",
-        "iden",
-    ]:
+    if name in _ONE_QUBIT_GATES:
         size = 1
-    elif name in ["swap"]:
+    elif name in _TWO_QUBIT_GATES:
         size = 2
+    elif name in _THREE_QUBIT_GATES:
+        size = 3
     else:
         raise Exception(f"Unsupported gate: {name}")
 
@@ -63,9 +117,9 @@ def convert(circuit_str: str) -> PyKernel:
 
     program = module.unrolled_ast
 
-    kernel: PyKernel = cudaq.make_kernel()
-    ctx: dict[str, QuakeValue] = {}
-    gate_kernels: dict[str, PyKernel] = {}
+    kernel = cudaq.make_kernel()
+    ctx = {}
+    gate_kernels = {}
 
     def get_gate(name: str, targs: tuple[type]) -> PyKernel:
         if name in gate_kernels:
@@ -95,7 +149,6 @@ def convert(circuit_str: str) -> PyKernel:
         q = ctx[qubit.name.name][ind.value]
         return q
 
-    # pylint: disable-next=too-many-nested-blocks
     for statement in program.statements:
         if isinstance(statement, ast.Include):
             if statement.filename not in {"stdgates.inc", "qelib1.inc"}:
@@ -132,7 +185,6 @@ def convert(circuit_str: str) -> PyKernel:
             qubit_refs = [qubit_lookup(q) for q in qubits]
 
             # pyqasm unrolls multiple modifiers.
-            # ctrl isn't supported so multi-ctrl is not an issue at the moment.
             assert len(statement.modifiers) <= 1
 
             if len(statement.modifiers) == 1:
@@ -144,18 +196,32 @@ def convert(circuit_str: str) -> PyKernel:
                 gate = get_gate(name, targs)
                 kernel.control(gate, qubit_refs[0], *qubit_refs[1:])
             else:
-                if (namel := name.lower())[0] == "c" and namel[1:] in [
-                    "x",
-                    "y",
-                    "z",
-                    "rx",
-                    "ry",
-                    "rz",
-                ]:
-                    # pyqasm doesn't unroll C{X,Y,Z} -> ctrl @ x. the below also handles this.
-                    gate = get_gate(namel[1:], targs)
-                    kernel.control(gate, qubit_refs[0], *qubit_refs[1:], *args)
+                # ----------------------------------------------------------
+                # Implicit controlled gates: cx, ccx, cccx, cswap, …
+                # ----------------------------------------------------------
+                num_ctrl, base_gate = _parse_controlled_name(name)
+
+                if num_ctrl > 0:
+                    # _parse_controlled_name() strips ALL leading 'c' chars,
+                    # so we get the true base gate and the right control count.
+                    #
+                    # Examples:
+                    #   cx    → control(x_kernel,   q0,       q1)
+                    #   ccx   → control(x_kernel,  [q0,q1],   q2)
+                    #   cccx  → control(x_kernel,  [q0,q1,q2],q3)
+                    #   cswap → control(swap_kernel, q0, q1,q2)
+                    # --------------------------------------------------------
+                    gate = get_gate(base_gate, targs)
+                    ctrl_qubits = qubit_refs[:num_ctrl]
+                    target_qubits = qubit_refs[num_ctrl:]
+
+                    # CUDA-Q accepts a single QuakeValue *or* a list of them
+                    ctrl_arg = ctrl_qubits[0] if len(ctrl_qubits) == 1 else ctrl_qubits
+                    kernel.control(gate, ctrl_arg, *target_qubits, *args)
                 else:
+                    # ----------------------------------------------------------
+                    # Non-controlled gate — direct apply_call path (unchanged)
+                    # ----------------------------------------------------------
                     gate = get_gate(name, targs)
                     # Fix from qbraid: make sure we use float and not integer
                     args = list(

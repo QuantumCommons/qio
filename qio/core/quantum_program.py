@@ -226,6 +226,48 @@ class QuantumProgram:
                 "unsupported unserialization:", self.serialization_format, e
             )
 
+    @classmethod
+    def from_cudaq_kernel(
+        cls,
+        cudaq_kernel: "cudaq.PyKernel",
+        dest_format: QuantumProgramSerializationFormat = QuantumProgramSerializationFormat.QASM_V2,
+        compression_format: QuantumProgramCompressionFormat = QuantumProgramCompressionFormat.ZLIB_BASE64_V1,
+    ) -> "QuantumProgram":
+        from qio.utils.conversion.program.cudaq_to_qasm2 import (
+            convert as cudaq_to_qasm2_convert,
+        )
+
+        dest_format = (
+            QuantumProgramSerializationFormat.QASM_V2
+            if dest_format
+            == QuantumProgramSerializationFormat.UNKNOWN_SERIALIZATION_FORMAT
+            else dest_format
+        )
+        compression_format = (
+            QuantumProgramCompressionFormat.NONE
+            if compression_format
+            == QuantumProgramCompressionFormat.UNKNOWN_COMPRESSION_FORMAT
+            else compression_format
+        )
+
+        try:
+            apply_serialization = {
+                QuantumProgramSerializationFormat.QASM_V2: cudaq_to_qasm2_convert,
+            }
+
+            serialization = apply_serialization[dest_format](cudaq_kernel)
+
+            if compression_format == QuantumProgramCompressionFormat.ZLIB_BASE64_V1:
+                serialization = str_to_zlib(serialization)
+
+            return cls(
+                serialization_format=dest_format,
+                compression_format=compression_format,
+                serialization=serialization,
+            )
+        except Exception as e:
+            raise Exception("unsupported serialization:", dest_format, e)
+
     def to_cudaq_kernel(self) -> "cudaq.Kernel":
         from qio.utils.conversion.program.qasm2_to_cudaq import (
             convert as qasm2_to_cudaq_convert,
