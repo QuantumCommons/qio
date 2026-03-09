@@ -37,7 +37,7 @@ class QuantumNoiseModelCompressionFormat(IntEnum):
 @dataclass_json
 @dataclass
 class QuantumNoiseModel:
-    compression_format: CompressionFormat
+    compression_format: QuantumNoiseModelCompressionFormat
     serialization_format: QuantumNoiseModelSerializationFormat
     serialization: str
 
@@ -61,7 +61,7 @@ class QuantumNoiseModel:
     def from_qiskit_aer_noise_model(
         self,
         noise_model: "qiskit_aer.NoiseModel",
-        compression_format: CompressionFormat = CompressionFormat.ZLIB_BASE64_V1,
+        compression_format: QuantumNoiseModelCompressionFormat = QuantumNoiseModelCompressionFormat.ZLIB_BASE64_V1,
     ) -> "QuantumNoiseModel":
         try:
             import numpy as np
@@ -74,8 +74,9 @@ class QuantumNoiseModel:
             raise Exception("Qiskit Aer is not installed")
 
         compression_format = (
-            CompressionFormat.NONE
-            if compression_format == CompressionFormat.UNKOWN_COMPRESSION_FORMAT
+            QuantumNoiseModelCompressionFormat.NONE
+            if compression_format
+            == QuantumNoiseModelCompressionFormat.UNKNOWN_COMPRESSION_FORMAT
             else compression_format
         )
 
@@ -105,8 +106,8 @@ class QuantumNoiseModel:
         noise_model_dict = noise_model.to_dict(False)
 
         apply_compression = {
-            CompressionFormat.NONE: lambda d: json.dumps(d),
-            CompressionFormat.ZLIB_BASE64_V1: lambda d: dict_to_zlib(
+            QuantumNoiseModelCompressionFormat.NONE: lambda d: json.dumps(d),
+            QuantumNoiseModelCompressionFormat.ZLIB_BASE64_V1: lambda d: dict_to_zlib(
                 _encode_numpy_complex(d)
             ),
         }
@@ -158,10 +159,10 @@ class QuantumNoiseModel:
             serialization = self.serialization
 
             apply_uncompression = {
-                CompressionFormat.ZLIB_BASE64_V1: lambda s: _custom_decode_numpy_and_complex(
+                QuantumNoiseModelCompressionFormat.ZLIB_BASE64_V1: lambda s: _custom_decode_numpy_and_complex(
                     zlib_to_dict(s)
                 ),
-                CompressionFormat.NONE: lambda s: json.loads(s),
+                QuantumNoiseModelCompressionFormat.NONE: lambda s: json.loads(s),
             }
 
             serialization_dict = apply_uncompression[self.compression_format](

@@ -40,7 +40,7 @@ class QuantumProgramResultCompressionFormat(IntEnum):
 @dataclass_json
 @dataclass
 class QuantumProgramResult:
-    compression_format: CompressionFormat
+    compression_format: QuantumProgramResultCompressionFormat
     serialization_format: QuantumProgramResultSerializationFormat
     serialization: str
 
@@ -64,17 +64,20 @@ class QuantumProgramResult:
     def from_cudaq_sample_result(
         cls,
         sample_result: "cudaq.SampleResult",
-        compression_format: CompressionFormat = CompressionFormat.ZLIB_BASE64_V1,
+        compression_format: QuantumProgramResultCompressionFormat = QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1,
     ) -> "QuantumProgramResult":
         compression_format = (
-            CompressionFormat.NONE
-            if compression_format == CompressionFormat.UNKOWN_COMPRESSION_FORMAT
+            QuantumProgramResultCompressionFormat.NONE
+            if compression_format
+            == QuantumProgramResultCompressionFormat.UNKNOWN_COMPRESSION_FORMAT
             else compression_format
         )
 
         apply_compression = {
-            CompressionFormat.NONE: lambda d: json.dumps(d),
-            CompressionFormat.ZLIB_BASE64_V1: lambda d: dict_to_zlib(d),
+            QuantumProgramResultCompressionFormat.NONE: lambda d: json.dumps(d),
+            QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1: lambda d: dict_to_zlib(
+                d
+            ),
         }
 
         sample_serialization = sample_result.serialize()
@@ -135,7 +138,7 @@ class QuantumProgramResult:
     def from_qiskit_result_dict(
         cls,
         qiskit_result_dict: Union[str, Dict],
-        compression_format: CompressionFormat = CompressionFormat.ZLIB_BASE64_V1,
+        compression_format: QuantumProgramResultCompressionFormat = QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1,
     ) -> "QuantumProgramResult":
         if isinstance(qiskit_result_dict, str):
             qiskit_result_dict = json.loads(
@@ -143,14 +146,17 @@ class QuantumProgramResult:
             )  # Ensure serialization is not ill-formatted
 
         compression_format = (
-            CompressionFormat.NONE
-            if compression_format == CompressionFormat.UNKOWN_COMPRESSION_FORMAT
+            QuantumProgramResultCompressionFormat.NONE
+            if compression_format
+            == QuantumProgramResultCompressionFormat.UNKOWN_COMPRESSION_FORMAT
             else compression_format
         )
 
         apply_compression = {
-            CompressionFormat.NONE: lambda d: json.dumps(d),
-            CompressionFormat.ZLIB_BASE64_V1: lambda d: dict_to_zlib(d),
+            QuantumProgramResultCompressionFormat.NONE: lambda d: json.dumps(d),
+            QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1: lambda d: dict_to_zlib(
+                d
+            ),
         }
 
         try:
@@ -429,7 +435,7 @@ class QuantumProgramResult:
     def from_cirq_result(
         cls,
         cirq_result: "cirq.Result",
-        compression_format: CompressionFormat = CompressionFormat.ZLIB_BASE64_V1,
+        compression_format: QuantumProgramResultCompressionFormat = QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1,
     ) -> "QuantumProgramResult":
         try:
             import cirq
@@ -444,7 +450,7 @@ class QuantumProgramResult:
     def from_cirq_result_dict(
         cls,
         cirq_result_dict: Union[str, Dict],
-        compression_format: CompressionFormat = CompressionFormat.ZLIB_BASE64_V1,
+        compression_format: QuantumProgramResultCompressionFormat = QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1,
     ) -> "QuantumProgramResult":
         if isinstance(cirq_result_dict, str):
             cirq_result_dict = json.loads(
@@ -452,14 +458,17 @@ class QuantumProgramResult:
             )  # Ensure serialization is not ill-formatted
 
         compression_format = (
-            CompressionFormat.NONE
-            if compression_format == CompressionFormat.UNKOWN_COMPRESSION_FORMAT
+            QuantumProgramResultCompressionFormat.NONE
+            if compression_format
+            == QuantumProgramResultCompressionFormat.UNKNOWN_COMPRESSION_FORMAT
             else compression_format
         )
 
         apply_compression = {
-            CompressionFormat.NONE: lambda d: json.dumps(d),
-            CompressionFormat.ZLIB_BASE64_V1: lambda d: dict_to_zlib(d),
+            QuantumProgramResultCompressionFormat.NONE: lambda d: json.dumps(d),
+            QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1: lambda d: dict_to_zlib(
+                d
+            ),
         }
 
         serialization = apply_compression[compression_format](cirq_result_dict)
@@ -477,8 +486,10 @@ class QuantumProgramResult:
             raise Exception("Cirq is not installed")
 
         apply_uncompression = {
-            CompressionFormat.NONE: lambda d: json.loads(d),
-            CompressionFormat.ZLIB_BASE64_V1: lambda d: zlib_to_dict(d),
+            QuantumProgramResultCompressionFormat.NONE: lambda d: json.loads(d),
+            QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1: lambda d: zlib_to_dict(
+                d
+            ),
         }
 
         result_dict = apply_uncompression[self.compression_format](self.serialization)
