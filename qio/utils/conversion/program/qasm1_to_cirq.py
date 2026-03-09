@@ -5,7 +5,7 @@ from collections import defaultdict
 from cirq.contrib.qasm_import import circuit_from_qasm
 
 
-def _restore_terminal_measurements(circuit: cirq.Circuit):
+def _restore_terminal_measurements(circuit: cirq.Circuit) -> cirq.Circuit:
     groups = defaultdict(dict)
     ops_to_remove = []
 

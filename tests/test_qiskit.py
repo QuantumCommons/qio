@@ -92,3 +92,7 @@ def test_global_qiskit_flow():
     uncomp_qiskit_result = compressed_qpr.to_qiskit_result()
     assert uncomp_qiskit_result is not None
     print("qiskit result from compressed data:", uncomp_qiskit_result)
+
+    cirq_result = compressed_qpr.to_cirq_result()
+    assert cirq_result is not None
+    print("Cirq result:", cirq_result)

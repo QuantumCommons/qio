@@ -49,6 +49,3 @@ def test_global_cudaq_flow():
     qiskit_result = compressed_qpr.to_qiskit_result()
     print("cudaq result as qiskit result:", qiskit_result)
     assert qiskit_result is not None
-
-
-test_global_cudaq_flow()
