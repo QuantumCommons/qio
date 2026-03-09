@@ -1,5 +1,6 @@
 import cirq
 import re
+
 from collections import defaultdict
 from cirq.contrib.qasm_import import circuit_from_qasm
 

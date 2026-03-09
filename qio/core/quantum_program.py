@@ -237,7 +237,10 @@ class QuantumProgram:
         serialization = self.serialization
 
         try:
-            if self.compression_format == QuantumProgramCompressionFormat.ZLIB_BASE64_V1:
+            if (
+                self.compression_format
+                == QuantumProgramCompressionFormat.ZLIB_BASE64_V1
+            ):
                 serialization = zlib_to_str(serialization)
 
             apply_unserialization = {
