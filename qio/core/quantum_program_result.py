@@ -235,13 +235,16 @@ class QuantumProgramResult:
             QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1: dict_to_zlib,
         }
 
-        serialization = apply_compression[compression_format](cirq_result_dict)
+        try:
+            serialization = apply_compression[compression_format](cirq_result_dict)
 
-        return cls(
-            compression_format=compression_format,
-            serialization_format=QuantumProgramResultSerializationFormat.CIRQ_RESULT_JSON_V1,
-            serialization=serialization,
-        )
+            return cls(
+                compression_format=compression_format,
+                serialization_format=QuantumProgramResultSerializationFormat.CIRQ_RESULT_JSON_V1,
+                serialization=serialization,
+            )
+        except Exception as e:
+            raise Exception("unsupported serialization:", e)
 
     def to_cirq_result(self, **kwargs) -> "cirq.Result":
         from qio.utils.conversion.program_result.dict_to_cirq import (

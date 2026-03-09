@@ -1,13 +1,13 @@
 from qiskit.result import Result
-from qiskit.result.models import ExperimentResult, ExperimentResultData
+
+
+def _hex_to_bitstring(value, nb_bits):
+    mask = (1 << nb_bits) - 1
+    return format(value & mask, f"0{nb_bits}b")
 
 
 def convert(result_dict: dict, **kwargs) -> Result:
     results = result_dict["results"]
-
-    def _hex_to_bitstring(value, nb_bits):
-        mask = (1 << nb_bits) - 1
-        return format(value & mask, f"0{nb_bits}b")
 
     for experiment in results:
         exp_data = experiment.get("data", {})

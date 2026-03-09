@@ -12,14 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import json
+import numpy as np
 
-from typing import Dict, Union
+from typing import Dict
 from enum import IntEnum
 
 from dataclasses import dataclass
 from dataclasses_json import dataclass_json
 
-from qio.utils import dict_to_zlib, zlib_to_dict
+from qio.utils.compression import dict_to_zlib, zlib_to_dict
 
 
 class QuantumNoiseModelSerializationFormat(IntEnum):
@@ -63,15 +64,7 @@ class QuantumNoiseModel:
         noise_model: "qiskit_aer.NoiseModel",
         compression_format: QuantumNoiseModelCompressionFormat = QuantumNoiseModelCompressionFormat.ZLIB_BASE64_V1,
     ) -> "QuantumNoiseModel":
-        try:
-            import numpy as np
-        except ImportError:
-            raise Exception("Numpy is not installed")
-
-        try:
-            from qiskit_aer.noise import NoiseModel
-        except ImportError:
-            raise Exception("Qiskit Aer is not installed")
+        from qio.utils.conversion.noise_model.aer_to_dict import convert
 
         compression_format = (
             QuantumNoiseModelCompressionFormat.NONE
@@ -103,7 +96,7 @@ class QuantumNoiseModel:
             else:
                 return obj
 
-        noise_model_dict = noise_model.to_dict(False)
+        noise_model_dict = convert(noise_model)
 
         apply_compression = {
             QuantumNoiseModelCompressionFormat.NONE: lambda d: json.dumps(d),
@@ -121,15 +114,7 @@ class QuantumNoiseModel:
         )
 
     def to_qiskit_aer_noise_model(self) -> "qiskit_aer.NoiseModel":
-        try:
-            import numpy as np
-        except ImportError:
-            raise Exception("Numpy is not installed")
-
-        try:
-            from qiskit_aer.noise import NoiseModel
-        except ImportError:
-            raise Exception("Qiskit Aer is not installed")
+        from qio.utils.conversion.noise_model.dict_to_aer import convert
 
         def _custom_decode_numpy_and_complex(obj):
             """
@@ -169,7 +154,11 @@ class QuantumNoiseModel:
                 serialization
             )
 
-            return NoiseModel.from_dict(serialization_dict)
+            apply_unserialization = {
+                QuantumNoiseModelSerializationFormat.QISKIT_AER_JSON_V1: convert,
+            }
+
+            return apply_unserialization[self.serialization_format](serialization_dict)
 
         except Exception as e:
             raise Exception("unsupported serialization:", self.serialization_format, e)

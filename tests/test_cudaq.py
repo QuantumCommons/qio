@@ -1,11 +1,7 @@
 import cudaq
 import random
 
-from qio.core import (
-    QuantumProgramResult,
-)
-
-from qio.utils import CompressionFormat
+from qio.core import QuantumProgramResult, QuantumProgramResultCompressionFormat
 
 
 @cudaq.kernel
@@ -25,11 +21,11 @@ def test_global_cudaq_flow():
     results = cudaq.sample(dummy_kernel, qubit_count, shots_count=shots)
 
     qpr_json = QuantumProgramResult.from_cudaq_sample_result(
-        results, compression_format=CompressionFormat.NONE
+        results, compression_format=QuantumProgramResultCompressionFormat.NONE
     ).to_json_str()
 
     compressed_qpr_json = QuantumProgramResult.from_cudaq_sample_result(
-        results, compression_format=CompressionFormat.ZLIB_BASE64_V1
+        results, compression_format=QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1
     ).to_json_str()
 
     assert qpr_json is not None

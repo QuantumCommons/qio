@@ -17,9 +17,9 @@ from qio.core import (
     QuantumComputationModel,
     QuantumProgram,
     QuantumProgramSerializationFormat,
+    QuantumProgramCompressionFormat,
 )
 
-from qio.utils import CompressionFormat
 from qio.utils.circuit import random_square_cirq_circuit
 
 
@@ -29,7 +29,7 @@ def test_cirq_to_qiskit_to_cirq_flow():
     program_1 = QuantumProgram.from_cirq_circuit(
         original_cirq_qc,
         dest_format=QuantumProgramSerializationFormat.QASM_V3,
-        compression_format=CompressionFormat.NONE,
+        compression_format=QuantumProgramCompressionFormat.NONE,
     )
 
     computation_model_json_1 = QuantumComputationModel(
@@ -43,7 +43,7 @@ def test_cirq_to_qiskit_to_cirq_flow():
     program_2 = QuantumProgram.from_qiskit_circuit(
         qiskit_qc,
         dest_format=QuantumProgramSerializationFormat.QASM_V3,
-        compression_format=CompressionFormat.NONE,
+        compression_format=QuantumProgramCompressionFormat.NONE,
     )
 
     computation_model_json = QuantumComputationModel(

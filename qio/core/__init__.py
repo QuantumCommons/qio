@@ -11,10 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from .quantum_program import QuantumProgram, QuantumProgramSerializationFormat
+from .quantum_program import (
+    QuantumProgram,
+    QuantumProgramSerializationFormat,
+    QuantumProgramCompressionFormat,
+)
 from .quantum_program_result import (
     QuantumProgramResult,
     QuantumProgramResultSerializationFormat,
+    QuantumProgramResultCompressionFormat,
 )
 from .quantum_computation_models import (
     QuantumComputationModel,
@@ -22,4 +27,8 @@ from .quantum_computation_models import (
     BackendData,
     ClientData,
 )
-from .quantum_noise_model import QuantumNoiseModelSerializationFormat, QuantumNoiseModel
+from .quantum_noise_model import (
+    QuantumNoiseModelSerializationFormat,
+    QuantumNoiseModelCompressionFormat,
+    QuantumNoiseModel,
+)
