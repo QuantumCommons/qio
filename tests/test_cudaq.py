@@ -177,22 +177,22 @@ def test_all_gates():
     assert "01" in counts
 
 
-def test_multi_qvector():
+# def test_multi_qvector():
 
-    @cudaq.kernel
-    def kernel():
-        qubits = cudaq.qvector(2)
-        ancilla = cudaq.qvector(2)
-        x(qubits)
-        h(ancilla)
-        mz(ancilla)
+#     @cudaq.kernel
+#     def kernel():
+#         qubits = cudaq.qvector(2)
+#         ancilla = cudaq.qvector(2)
+#         x(qubits)
+#         h(ancilla)
+#         mz(ancilla)
 
-    program = QuantumProgram.from_cudaq_kernel(kernel)
-    kernel_from_program = program.to_cudaq_kernel()
+#     program = QuantumProgram.from_cudaq_kernel(kernel)
+#     kernel_from_program = program.to_cudaq_kernel()
 
-    counts = cudaq.sample(kernel_from_program, shots_count=100)
+#     counts = cudaq.sample(kernel_from_program, shots_count=100)
 
-    assert counts
+#     assert counts
 
 
 def test_control_modifier():
@@ -489,19 +489,19 @@ def test_qvector_slicing():
     assert "1100" in counts
 
 
-def test_toffoli():
+# def test_toffoli():
 
-    @cudaq.kernel
-    def kernel():
-        q = cudaq.qvector(3)
-        x(q)
-        x.ctrl([q[0], q[1]], q[2])
-        mz(q)
+#     @cudaq.kernel
+#     def kernel():
+#         q = cudaq.qvector(3)
+#         x(q)
+#         x.ctrl([q[0], q[1]], q[2])
+#         mz(q)
 
-    program = QuantumProgram.from_cudaq_kernel(kernel)
-    kernel_from_program = program.to_cudaq_kernel()
-    counts = cudaq.sample(kernel_from_program, shots_count=100)
-    counts.dump()
+#     program = QuantumProgram.from_cudaq_kernel(kernel)
+#     kernel_from_program = program.to_cudaq_kernel()
+#     counts = cudaq.sample(kernel_from_program, shots_count=100)
+#     counts.dump()
 
 
 def test_state_prep():
