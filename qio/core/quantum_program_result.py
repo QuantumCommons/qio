@@ -12,29 +12,33 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import json
-import collections
-import io
 
-from typing import Union, Sequence, Dict, Tuple, Callable, TypeVar, cast, List
+from typing import Union, Dict
 from enum import IntEnum
 
 from dataclasses import dataclass
 from dataclasses_json import dataclass_json
 
-from qio.utils import dict_to_zlib, zlib_to_dict, CompressionFormat
+from qio.utils.compression import dict_to_zlib, zlib_to_dict
 
 
 class QuantumProgramResultSerializationFormat(IntEnum):
-    UNKOWN_SERIALIZATION_FORMAT = 0
+    UNKNOWN_SERIALIZATION_FORMAT = 0
     CIRQ_RESULT_JSON_V1 = 1
     QISKIT_RESULT_JSON_V1 = 2
     CUDAQ_SAMPLE_RESULT_JSON_V1 = 3
 
 
+class QuantumProgramResultCompressionFormat(IntEnum):
+    UNKNOWN_COMPRESSION_FORMAT = 0
+    NONE = 1
+    ZLIB_BASE64_V1 = 2
+
+
 @dataclass_json
 @dataclass
 class QuantumProgramResult:
-    compression_format: CompressionFormat
+    compression_format: QuantumProgramResultCompressionFormat
     serialization_format: QuantumProgramResultSerializationFormat
     serialization: str
 
@@ -58,22 +62,27 @@ class QuantumProgramResult:
     def from_cudaq_sample_result(
         cls,
         sample_result: "cudaq.SampleResult",
-        compression_format: CompressionFormat = CompressionFormat.ZLIB_BASE64_V1,
+        compression_format: QuantumProgramResultCompressionFormat = QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1,
     ) -> "QuantumProgramResult":
+        from qio.utils.conversion.program_result.cudaq_sample_to_dict import (
+            convert as cudaq_sample_to_dict,
+        )
+
         compression_format = (
-            CompressionFormat.NONE
-            if compression_format == CompressionFormat.UNKOWN_COMPRESSION_FORMAT
+            QuantumProgramResultCompressionFormat.NONE
+            if compression_format
+            == QuantumProgramResultCompressionFormat.UNKNOWN_COMPRESSION_FORMAT
             else compression_format
         )
 
         apply_compression = {
-            CompressionFormat.NONE: lambda d: json.dumps(d),
-            CompressionFormat.ZLIB_BASE64_V1: lambda d: dict_to_zlib(d),
+            QuantumProgramResultCompressionFormat.NONE: json.dumps,
+            QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1: dict_to_zlib,
         }
 
-        sample_serialization = sample_result.serialize()
-
         try:
+            sample_serialization = cudaq_sample_to_dict(sample_result)
+
             return cls(
                 compression_format=compression_format,
                 serialization_format=QuantumProgramResultSerializationFormat.CUDAQ_SAMPLE_RESULT_JSON_V1,
@@ -85,51 +94,51 @@ class QuantumProgramResult:
             raise Exception("unsupport serialization:", compression_format, e)
 
     def to_cudaq_sample_result(self, **kwargs) -> "cudaq.SampleResult":
-        try:
-            import cudaq
-        except ImportError:
-            raise Exception("CUDA-Q is not installed")
+        from qio.utils.conversion.program_result.dict_to_cudaq_sample import (
+            convert as dict_to_cudaq_sample,
+        )
 
         apply_uncompression = {
-            CompressionFormat.NONE: lambda d: json.loads(d),
-            CompressionFormat.ZLIB_BASE64_V1: lambda d: zlib_to_dict(d),
+            QuantumProgramResultCompressionFormat.NONE: json.loads,
+            QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1: zlib_to_dict,
         }
 
         serialized_sample_result = apply_uncompression[self.compression_format](
             self.serialization
         )
 
-        if (
-            self.serialization_format
-            == QuantumProgramResultSerializationFormat.CUDAQ_SAMPLE_RESULT_JSON_V1
-        ):
-            sample_result = cudaq.SampleResult()
-            sample_result.deserialize(serialized_sample_result)
+        try:
+            apply_unserialization = {
+                QuantumProgramResultSerializationFormat.CUDAQ_SAMPLE_RESULT_JSON_V1: dict_to_cudaq_sample,
+            }
 
-            return sample_result
-        else:
+            return apply_unserialization[self.serialization_format](
+                serialized_sample_result
+            )
+        except Exception as e:
             raise Exception(
-                "unsupported serialization format:", self.serialization_format
+                "unsupported unserialization:", self.serialization_format, e
             )
 
     @classmethod
     def from_qiskit_result(
         cls,
         qiskit_result: "qiskit.result.Result",
-        compression_format: CompressionFormat = CompressionFormat.ZLIB_BASE64_V1,
+        compression_format: QuantumProgramResultCompressionFormat = QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1,
     ) -> "QuantumProgramResult":
-        try:
-            from qiskit.result import Result
-        except ImportError:
-            raise Exception("Qiskit is not installed")
+        from qio.utils.conversion.program_result.qiskit_to_dict import (
+            convert as qiskit_to_dict_convert,
+        )
 
-        return cls.from_qiskit_result_dict(qiskit_result.to_dict(), compression_format)
+        qiskit_result_dict = qiskit_to_dict_convert(qiskit_result)
+
+        return cls.from_qiskit_result_dict(qiskit_result_dict, compression_format)
 
     @classmethod
     def from_qiskit_result_dict(
         cls,
         qiskit_result_dict: Union[str, Dict],
-        compression_format: CompressionFormat = CompressionFormat.ZLIB_BASE64_V1,
+        compression_format: QuantumProgramResultCompressionFormat = QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1,
     ) -> "QuantumProgramResult":
         if isinstance(qiskit_result_dict, str):
             qiskit_result_dict = json.loads(
@@ -137,14 +146,15 @@ class QuantumProgramResult:
             )  # Ensure serialization is not ill-formatted
 
         compression_format = (
-            CompressionFormat.NONE
-            if compression_format == CompressionFormat.UNKOWN_COMPRESSION_FORMAT
+            QuantumProgramResultCompressionFormat.NONE
+            if compression_format
+            == QuantumProgramResultCompressionFormat.UNKNOWN_COMPRESSION_FORMAT
             else compression_format
         )
 
         apply_compression = {
-            CompressionFormat.NONE: lambda d: json.dumps(d),
-            CompressionFormat.ZLIB_BASE64_V1: lambda d: dict_to_zlib(d),
+            QuantumProgramResultCompressionFormat.NONE: json.dumps,
+            QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1: dict_to_zlib,
         }
 
         try:
@@ -154,291 +164,59 @@ class QuantumProgramResult:
                 serialization=apply_compression[compression_format](qiskit_result_dict),
             )
         except Exception as e:
-            raise Exception("unsupport serialization:", compression_format, e)
+            raise Exception("unsupported serialization:", compression_format, e)
 
     def to_qiskit_result(self, **kwargs) -> "qiskit.result.Result":
-        try:
-            from qiskit.result import Result
-            from qiskit.result.models import ExperimentResult, ExperimentResultData
-
-        except ImportError:
-            raise Exception("Qiskit is not installed")
+        from qio.utils.conversion.program_result.dict_to_qiskit import (
+            convert as dict_to_qiskit_convert,
+        )
+        from qio.utils.conversion.program_result.cirq_to_qiskit import (
+            convert as cirq_to_qiskit_convert,
+        )
+        from qio.utils.conversion.program_result.cudaq_sample_to_qiskit import (
+            convert as cudaq_sample_to_qiskit_convert,
+        )
 
         apply_uncompression = {
-            CompressionFormat.NONE: lambda d: json.loads(d),
-            CompressionFormat.ZLIB_BASE64_V1: lambda d: zlib_to_dict(d),
+            QuantumProgramResultCompressionFormat.NONE: json.loads,
+            QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1: zlib_to_dict,
         }
 
         serialization = apply_uncompression[self.compression_format](self.serialization)
 
-        if (
-            self.serialization_format
-            == QuantumProgramResultSerializationFormat.QISKIT_RESULT_JSON_V1
-        ):
-            results = serialization["results"]
-
-            def _hex_to_bitstring(value, nb_bits):
-                mask = (1 << nb_bits) - 1
-                return format(value & mask, f"0{nb_bits}b")
-
-            for experiment in results:
-                exp_data = experiment.get("data", {})
-                counts = exp_data.get("counts", None)
-                n_qubits = experiment["header"]["n_qubits"]
-
-                if counts:
-                    new_counts = {}
-
-                    for bitstring, count in counts.items():
-                        if bitstring.startswith("0x"):
-                            nbits = _hex_to_bitstring(int(bitstring, 16), n_qubits)
-                        else:
-                            nbits = bitstring
-
-                        new_counts[nbits] = count
-
-                    exp_data["counts"] = new_counts
-
-            data = {
-                "results": results,
-                "success": serialization["success"],
-                "header": serialization.get("header"),
-                "metadata": serialization.get("metadata"),
+        try:
+            apply_unserialization = {
+                QuantumProgramResultSerializationFormat.QISKIT_RESULT_JSON_V1: dict_to_qiskit_convert,
+                QuantumProgramResultSerializationFormat.CUDAQ_SAMPLE_RESULT_JSON_V1: cudaq_sample_to_qiskit_convert,
+                QuantumProgramResultSerializationFormat.CIRQ_RESULT_JSON_V1: cirq_to_qiskit_convert,
             }
 
-            if kwargs:
-                data.update(kwargs)
-
-            return Result.from_dict(data)
-        elif (
-            self.serialization_format
-            == QuantumProgramResultSerializationFormat.CUDAQ_SAMPLE_RESULT_JSON_V1
-        ):
-
-            def __long_to_bitstring(val: int, size: int) -> str:
-                """
-                Equivalent to the C++ longToBitString.
-                Converts an integer to a binary string padded to the correct bit length.
-                """
-                # Format to binary, remove '0b' prefix, and pad with leading zeros
-                return bin(val)[2:].zfill(size)
-
-            def __extract_name(data: List[int], stride: int) -> Tuple[str, int]:
-                """Extracts a string (register name) from the data array."""
-                n_chars = data[stride]
-                stride += 1
-                name = "".join(chr(data[i]) for i in range(stride, stride + n_chars))
-                stride += n_chars
-
-                return name, stride
-
-            def __deserialize_to_dict(data: List[int]) -> Dict[str, Dict[str, int]]:
-                """
-                Parses the integer array into a dictionary of registers and their counts.
-                Matches the logic of ExecutionResult::deserialize and deserializeCounts.
-                """
-                stride = 0
-                all_results = {}
-
-                while stride < len(data):
-                    # 1. Extract Register Name
-                    name, stride = __extract_name(data, stride)
-
-                    # 2. Extract Counts (deserializeCounts logic)
-                    num_bitstrings = data[stride]
-                    stride += 1
-
-                    local_counts = {}
-                    memory = []
-                    # Each entry is a triplet: [packed_value, bit_size, count]
-                    for _ in range(num_bitstrings):
-                        bitstring_as_long = data[stride]
-                        size_of_bitstring = data[stride + 1]
-                        count = data[stride + 2]
-
-                        bs = __long_to_bitstring(bitstring_as_long, size_of_bitstring)
-                        local_counts[bs] = count
-                        memory.extend([bs] * count)
-                        stride += 3
-
-                    all_results[name] = local_counts
-
-                return all_results, memory
-
-            parsed_data, memory = __deserialize_to_dict(serialization)
-            experiment_results = []
-
-            for reg_name, counts in parsed_data.items():
-                shots = sum(counts.values())
-
-                # Encapsulate data in Qiskit's expected format
-                data_payload = ExperimentResultData(counts=counts, memory=memory)
-
-                exp_res = ExperimentResult(
-                    shots=shots,
-                    success=True,
-                    data=data_payload,
-                    header={"name": reg_name, "memory": True},
-                    status="Done",
-                )
-                experiment_results.append(exp_res)
-
-            return Result(results=experiment_results, **kwargs)
-        elif (
-            self.serialization_format
-            == QuantumProgramResultSerializationFormat.CIRQ_RESULT_JSON_V1
-        ):
-            T = TypeVar("T")
-
-            import numpy as np
-
-            def __unpack_bits(
-                packed_bits: str, dtype: str, shape: Sequence[int]
-            ) -> np.ndarray:
-                bits_bytes = bytes.fromhex(packed_bits)
-                bits = np.unpackbits(np.frombuffer(bits_bytes, dtype=np.uint8))
-                return bits[: np.prod(shape).item()].reshape(shape).astype(dtype)
-
-            def __unpack_digits(
-                packed_digits: str,
-                binary: bool,
-                dtype: Union[None, str],
-                shape: Union[None, Sequence[int]],
-            ):
-                if binary:
-                    dtype = cast(str, dtype)
-                    shape = cast(Sequence[int], shape)
-                    return __unpack_bits(packed_digits, dtype, shape)
-
-                buffer = io.BytesIO()
-                buffer.write(bytes.fromhex(packed_digits))
-                buffer.seek(0)
-                digits = np.load(buffer, allow_pickle=False)
-                buffer.close()
-                return digits
-
-            def __key_to_str(key) -> str:
-                if isinstance(key, str):
-                    return key
-                return ",".join(str(q) for q in key)
-
-            def __big_endian_bits_to_int(bits) -> int:
-                result = 0
-                for e in bits:
-                    result <<= 1
-                    if e:
-                        result |= 1
-                return result
-
-            def __tuple_of_big_endian_int(bit_groups) -> Tuple[int, ...]:
-                return tuple(__big_endian_bits_to_int(bits) for bits in bit_groups)
-
-            def __multi_measurement_histogram(
-                keys,
-                measurements,
-                repetitions,
-                fold_func: Callable[[Tuple], T] = cast(
-                    Callable[[Tuple], T], __tuple_of_big_endian_int
-                ),
-            ) -> Tuple[collections.Counter, list]:
-                fixed_keys = tuple(__key_to_str(key) for key in keys)
-                samples = zip(*(measurements[sub_key] for sub_key in fixed_keys))
-
-                if len(fixed_keys) == 0:
-                    samples = [()] * repetitions
-
-                counter = collections.Counter()
-                memory = []
-
-                for sample in samples:
-                    memory.append("".join(str(a) for a in np.concatenate(sample)))
-                    counter[fold_func(sample)] += 1
-
-                return (counter, memory)
-
-            def __make_hex_from_result_array(result: Tuple):
-                str_value = "".join(map(str, result))
-                binary_value = bin(int(str_value))
-                integer_value = int(binary_value, 2)
-
-                return hex(integer_value)
-
-            def __make_bin_from_result_array(result: Tuple):
-                str_value = "".join(map(str, result))
-                return str_value
-
-            def __measurements(records: Dict):
-                measurements = {}
-                for key, data in records.items():
-                    reps, instances, qubits = data.shape
-                    if instances != 1:
-                        raise ValueError(
-                            "Cannot extract 2D measurements for repeated keys"
-                        )
-                    measurements[key] = data.reshape((reps, qubits))
-
-                return measurements
-
-            def __make_expresult_from_cirq_result(
-                cirq_result_dict: Dict,
-            ) -> ExperimentResult:
-                raw_records = cirq_result_dict["records"]
-                records = {
-                    key: __unpack_digits(**val) for key, val in raw_records.items()
-                }
-                measurements = __measurements(records)
-                repetitions = len(next(iter(records.values())))
-
-                counter, memory = __multi_measurement_histogram(
-                    keys=measurements.keys(),
-                    measurements=measurements,
-                    repetitions=repetitions,
-                )
-
-                histogram = dict(counter)
-
-                return ExperimentResult(
-                    shots=repetitions,
-                    success=True,
-                    data=ExperimentResultData(
-                        counts={
-                            __make_bin_from_result_array(key): value
-                            for key, value in histogram.items()
-                        },
-                        memory=memory,
-                    ),
-                )
-
-            kwargs = kwargs or {}
-
-            return Result(
-                results=[__make_expresult_from_cirq_result(serialization)], **kwargs
+            return apply_unserialization[self.serialization_format](
+                serialization, **kwargs
             )
-        else:
-            raise Exception(
-                "unsupported serialization format:", self.serialization_format
-            )
+
+        except Exception as e:
+            raise Exception("unsupported serialization:", self.serialization_format, e)
 
     @classmethod
     def from_cirq_result(
         cls,
         cirq_result: "cirq.Result",
-        compression_format: CompressionFormat = CompressionFormat.ZLIB_BASE64_V1,
+        compression_format: QuantumProgramResultCompressionFormat = QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1,
     ) -> "QuantumProgramResult":
-        try:
-            import cirq
-        except ImportError:
-            raise Exception("Cirq is not installed")
+        from qio.utils.conversion.program_result.cirq_to_dict import (
+            convert as cirq_to_dict_convert,
+        )
 
-        data = cirq_result._json_dict_()
+        cirq_result_dict = cirq_to_dict_convert(cirq_result)
 
-        return cls.from_cirq_result_dict(data, compression_format)
+        return cls.from_cirq_result_dict(cirq_result_dict, compression_format)
 
     @classmethod
     def from_cirq_result_dict(
         cls,
         cirq_result_dict: Union[str, Dict],
-        compression_format: CompressionFormat = CompressionFormat.ZLIB_BASE64_V1,
+        compression_format: QuantumProgramResultCompressionFormat = QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1,
     ) -> "QuantumProgramResult":
         if isinstance(cirq_result_dict, str):
             cirq_result_dict = json.loads(
@@ -446,98 +224,55 @@ class QuantumProgramResult:
             )  # Ensure serialization is not ill-formatted
 
         compression_format = (
-            CompressionFormat.NONE
-            if compression_format == CompressionFormat.UNKOWN_COMPRESSION_FORMAT
+            QuantumProgramResultCompressionFormat.NONE
+            if compression_format
+            == QuantumProgramResultCompressionFormat.UNKNOWN_COMPRESSION_FORMAT
             else compression_format
         )
 
         apply_compression = {
-            CompressionFormat.NONE: lambda d: json.dumps(d),
-            CompressionFormat.ZLIB_BASE64_V1: lambda d: dict_to_zlib(d),
+            QuantumProgramResultCompressionFormat.NONE: json.dumps,
+            QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1: dict_to_zlib,
         }
 
-        serialization = apply_compression[compression_format](cirq_result_dict)
+        try:
+            serialization = apply_compression[compression_format](cirq_result_dict)
 
-        return cls(
-            compression_format=compression_format,
-            serialization_format=QuantumProgramResultSerializationFormat.CIRQ_RESULT_JSON_V1,
-            serialization=serialization,
-        )
+            return cls(
+                compression_format=compression_format,
+                serialization_format=QuantumProgramResultSerializationFormat.CIRQ_RESULT_JSON_V1,
+                serialization=serialization,
+            )
+        except Exception as e:
+            raise Exception("unsupported serialization:", e)
 
     def to_cirq_result(self, **kwargs) -> "cirq.Result":
-        try:
-            from cirq import ResultDict
-        except ImportError:
-            raise Exception("Cirq is not installed")
+        from qio.utils.conversion.program_result.dict_to_cirq import (
+            convert as dict_to_cirq_convert,
+        )
+        from qio.utils.conversion.program_result.qiskit_to_cirq import (
+            convert as qiskit_to_cirq_convert,
+        )
 
         apply_uncompression = {
-            CompressionFormat.NONE: lambda d: json.loads(d),
-            CompressionFormat.ZLIB_BASE64_V1: lambda d: zlib_to_dict(d),
+            QuantumProgramResultCompressionFormat.NONE: json.loads,
+            QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1: zlib_to_dict,
         }
 
         result_dict = apply_uncompression[self.compression_format](self.serialization)
 
-        if kwargs:
-            result_dict.update(kwargs)
+        try:
 
-        if (
-            self.serialization_format
-            == QuantumProgramResultSerializationFormat.CIRQ_RESULT_JSON_V1
-        ):
-            cirq_result = ResultDict._from_json_dict_(**result_dict)
-        elif (
-            self.serialization_format
-            == QuantumProgramResultSerializationFormat.QISKIT_RESULT_JSON_V1
-        ):
-            from cirq import ResultDict
-            import numpy as np
+            apply_unserialization = {
+                QuantumProgramResultSerializationFormat.CIRQ_RESULT_JSON_V1: dict_to_cirq_convert,
+                QuantumProgramResultSerializationFormat.QISKIT_RESULT_JSON_V1: qiskit_to_cirq_convert,
+            }
 
-            def _extract_measurement_key(experiment_result: Dict) -> str:
-                header = experiment_result.get("header", {})
-                creg_sizes = header.get("creg_sizes", [])
+            return apply_unserialization[self.serialization_format](
+                result_dict, **kwargs
+            )
 
-                if creg_sizes and len(creg_sizes) > 0:
-                    m_name = creg_sizes[0][0]
-                    return m_name.replace("m_", "")
-
-                return "m"
-
-            def _to_cirq_result(data: Dict) -> ResultDict:
-                experiment = data.get("results", [{}])[0]
-                m_key = _extract_measurement_key(experiment)
-
-                counts = experiment.get("data", {}).get("counts", {})
-                header = experiment.get("header", {})
-                qreg_sizes = header.get("qreg_sizes", [])
-                num_qubits = header.get("n_qubits", None)
-
-                if not num_qubits and qreg_sizes and len(qreg_sizes) > 0:
-                    num_qubits = qreg_sizes[0][1]
-                else:
-                    memory = experiment.get("memory", {})
-
-                    if memory and len(memory) > 0:
-                        num_qubits = len(memory[0])
-
-                all_shots = []
-
-                for bitstring_hex, count in counts.items():
-                    if bitstring_hex.startswith("0x"):
-                        integer_val = int(bitstring_hex, 16)
-                        bitstring = format(integer_val, f"0{num_qubits}b")
-                    else:
-                        bitstring = bitstring_hex
-
-                    bits = [int(b) for b in bitstring]
-                    for _ in range(count):
-                        all_shots.append(bits)
-
-                measurements = {m_key: np.array(all_shots)}
-
-                return ResultDict(
-                    params=data.pop("params", None), measurements=measurements
-                )
-
-            cirq_result = _to_cirq_result(result_dict)
-
-        return cirq_result
+        except Exception as e:
+            raise Exception(
+                "unsupported unserialization:", self.serialization_format, e
+            )

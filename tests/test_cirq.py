@@ -15,6 +15,8 @@ from qsimcirq import QSimSimulator
 
 from qio.core import (
     QuantumComputationModel,
+    QuantumProgramCompressionFormat,
+    QuantumProgramResultCompressionFormat,
     QuantumComputationParameters,
     QuantumProgramResult,
     QuantumProgram,
@@ -22,9 +24,7 @@ from qio.core import (
     ClientData,
 )
 
-from qio.utils import CompressionFormat
-
-from qio.utils.circuit import random_square_cirq_circuit
+from qio.utils.circuit_factory import random_square_cirq_circuit
 
 
 def test_global_cirq_flow():
@@ -33,10 +33,10 @@ def test_global_cirq_flow():
     shots = 20
 
     program = QuantumProgram.from_cirq_circuit(
-        qc, compression_format=CompressionFormat.NONE
+        qc, compression_format=QuantumProgramCompressionFormat.NONE
     )
     compressed_program = QuantumProgram.from_cirq_circuit(
-        qc, compression_format=CompressionFormat.ZLIB_BASE64_V1
+        qc, compression_format=QuantumProgramCompressionFormat.ZLIB_BASE64_V1
     )
 
     backend_data = BackendData(
@@ -73,11 +73,12 @@ def test_global_cirq_flow():
     result_2._params = None  # ParamResolver cannot be serialized
 
     qpr_json = QuantumProgramResult.from_cirq_result(
-        result_1, compression_format=CompressionFormat.NONE
+        result_1, compression_format=QuantumProgramResultCompressionFormat.NONE
     ).to_json_str()
 
     compressed_qpr_json = QuantumProgramResult.from_cirq_result(
-        result_2, compression_format=CompressionFormat.ZLIB_BASE64_V1
+        result_2,
+        compression_format=QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1,
     ).to_json_str()
 
     assert qpr_json is not None

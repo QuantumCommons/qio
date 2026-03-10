@@ -11,3 +11,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.from enum import Enum
+from qiskit_aer.noise import NoiseModel
+
+
+def convert(noise_model: NoiseModel) -> dict:
+    noise_model_dict = noise_model.to_dict(False)
+
+    return noise_model_dict

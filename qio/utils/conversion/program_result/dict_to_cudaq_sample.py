@@ -11,3 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.from enum import Enum
+import cudaq
+
+
+def convert(result_dict: dict) -> cudaq.SampleResult:
+    sample_result = cudaq.SampleResult()
+    sample_result.deserialize(result_dict)
+
+    return sample_result

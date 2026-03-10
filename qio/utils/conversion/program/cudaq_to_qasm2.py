@@ -11,3 +11,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.from enum import Enum
+import cudaq
+
+from cudaq import PyKernel
+
+
+def convert(cudaq_kernel: PyKernel) -> str:
+    return cudaq.translate(cudaq_kernel, format="openqasm2")

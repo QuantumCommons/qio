@@ -11,3 +11,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.from enum import Enum
+from qiskit.result import Result
+
+
+def convert(qiskit_result: Result) -> dict:
+    return qiskit_result.to_dict()

@@ -11,3 +11,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.from enum import Enum
+from qiskit import qasm3, QuantumCircuit
+
+
+def convert(circuit_str: str) -> QuantumCircuit:
+    return qasm3.loads(circuit_str)

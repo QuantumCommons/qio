@@ -11,3 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.from enum import Enum
+import cudaq
+
+from cudaq import PyKernel
+from pyqir import Module, Context
+
+
+def convert(cudaq_kernel: PyKernel) -> Module:
+    llvm_ir = cudaq.translate(cudaq_kernel, format="qir")
+    context = Context()
+    module = Module.from_ir(context, llvm_ir, "main")
+
+    return module

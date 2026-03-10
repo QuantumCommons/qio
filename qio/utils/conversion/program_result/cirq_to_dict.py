@@ -11,3 +11,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.from enum import Enum
+import cirq
+
+
+def convert(cirq_result: cirq.Result, **kwargs) -> dict:
+    return cirq_result._json_dict_()

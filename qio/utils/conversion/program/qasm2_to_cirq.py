@@ -11,3 +11,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.from enum import Enum
+import cirq
+
+from .qasm1_to_cirq import convert as qasm1_to_cirq_convert
+
+
+def convert(circuit_str: str) -> cirq.Circuit:
+    return qasm1_to_cirq_convert(circuit_str)

@@ -11,3 +11,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.from enum import Enum
+import cirq
+
+
+def convert(circuit_str: str) -> cirq.Circuit:
+    return cirq.read_json(json_text=circuit_str)

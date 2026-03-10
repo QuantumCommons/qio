@@ -18,13 +18,13 @@ from qio.core import (
     QuantumComputationParameters,
     QuantumProgramResult,
     QuantumProgram,
+    QuantumProgramCompressionFormat,
+    QuantumProgramResultCompressionFormat,
     BackendData,
     ClientData,
 )
 
-from qio.utils import CompressionFormat
-
-from qio.utils.circuit import random_square_qiskit_circuit
+from qio.utils.circuit_factory import random_square_qiskit_circuit
 
 
 def test_global_qiskit_flow():
@@ -33,10 +33,10 @@ def test_global_qiskit_flow():
     shots = 20
 
     program = QuantumProgram.from_qiskit_circuit(
-        qc, compression_format=CompressionFormat.NONE
+        qc, compression_format=QuantumProgramCompressionFormat.NONE
     )
     compressed_program = QuantumProgram.from_qiskit_circuit(
-        qc, compression_format=CompressionFormat.ZLIB_BASE64_V1
+        qc, compression_format=QuantumProgramCompressionFormat.ZLIB_BASE64_V1
     )
 
     backend_data = BackendData(
@@ -70,11 +70,12 @@ def test_global_qiskit_flow():
     result_2 = aer_simulator.run(uncomp_circuit, shots=params.shots).result()
 
     qpr_json = QuantumProgramResult.from_qiskit_result(
-        result_1, compression_format=CompressionFormat.NONE
+        result_1, compression_format=QuantumProgramResultCompressionFormat.NONE
     ).to_json_str()
 
     compressed_qpr_json = QuantumProgramResult.from_qiskit_result(
-        result_2, compression_format=CompressionFormat.ZLIB_BASE64_V1
+        result_2,
+        compression_format=QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1,
     ).to_json_str()
 
     assert qpr_json is not None
@@ -91,3 +92,7 @@ def test_global_qiskit_flow():
     uncomp_qiskit_result = compressed_qpr.to_qiskit_result()
     assert uncomp_qiskit_result is not None
     print("qiskit result from compressed data:", uncomp_qiskit_result)
+
+    cirq_result = compressed_qpr.to_cirq_result()
+    assert cirq_result is not None
+    print("Cirq result:", cirq_result)
