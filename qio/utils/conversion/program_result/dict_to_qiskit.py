@@ -10,13 +10,26 @@
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
-# limitations under the License.from enum import Enum
+# limitations under the License.
 from qiskit.result import Result
 
 
-def _hex_to_bitstring(value, nb_bits):
-    mask = (1 << nb_bits) - 1
-    return format(value & mask, f"0{nb_bits}b")
+def _hex_to_bitstring(value, nb_qbits):
+    """
+    Converts a Qiskit hexadecimal/integer result into a formatted bitstring.
+    Automatically detects and removes empty classical registers caused by measure_all().
+    """
+    # 1. Handle the input type (allows both '0xc' and 12)
+    int_val = int(value, 16) if isinstance(value, str) else int(value)
+
+    # 2. Check if the value exceeds the max size for the given number of qubits.
+    # (1 << n_qbits) is a bitwise way to calculate 2^n_qbits.
+    if int_val >= (1 << nb_qbits):
+        # The result is padded. We shift right by n_qbits to drop the empty register.
+        int_val = int_val >> nb_qbits
+
+    # 3. Convert to binary, strip the '0b' prefix, and pad with leading zeros
+    return bin(int_val)[2:].zfill(nb_qbits)
 
 
 def convert(result_dict: dict, **kwargs) -> Result:
