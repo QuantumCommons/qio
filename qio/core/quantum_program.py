@@ -138,6 +138,37 @@ class QuantumProgram:
             raise Exception(
                 "unsupported unserialization:", self.serialization_format, e
             )
+        
+    def to_mimiq_circuit(self) -> "mimiqcircuits.Circuit":
+        from qio.utils.conversion.program.qasm2_to_mimiq import (
+            convert as qasm2_to_mimiq_convert,
+        )
+
+        serialization = self.serialization
+
+        if self.compression_format == QuantumProgramCompressionFormat.ZLIB_BASE64_V1:
+            serialization = zlib_to_str(serialization)
+
+        try:
+            apply_unserialization = {
+                QuantumProgramSerializationFormat.QASM_V2: qasm2_to_mimiq_convert,
+            }
+
+            return apply_unserialization[self.serialization_format](serialization)
+        except Exception as e:
+            raise Exception("unsupported unserialization:", self.serialization_format, e)
+    
+    def to_qasm2_circuit(self) -> str:
+
+        serialization = self.serialization
+
+        if self.compression_format == QuantumProgramCompressionFormat.ZLIB_BASE64_V1:
+            serialization = zlib_to_str(serialization)
+
+        if self.serialization_format != QuantumProgramSerializationFormat.QASM_V2:
+            raise Exception("unsupported unserialization:", self.serialization_format)
+
+        return serialization
 
     @classmethod
     def from_cirq_circuit(
