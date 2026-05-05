@@ -27,6 +27,7 @@ class QuantumProgramResultSerializationFormat(IntEnum):
     CIRQ_RESULT_JSON_V1 = 1
     QISKIT_RESULT_JSON_V1 = 2
     CUDAQ_SAMPLE_RESULT_JSON_V1 = 3
+    MIMIQ_QCSR_JSON_V1 = 4
 
 
 class QuantumProgramResultCompressionFormat(IntEnum):
@@ -176,6 +177,9 @@ class QuantumProgramResult:
         from qio.utils.conversion.program_result.cudaq_sample_to_qiskit import (
             convert as cudaq_sample_to_qiskit_convert,
         )
+        from qio.utils.conversion.program_result.mimiq_to_qiskit import (
+            convert as mimiq_to_qiskit_convert,
+        )
 
         apply_uncompression = {
             QuantumProgramResultCompressionFormat.NONE: json.loads,
@@ -189,6 +193,7 @@ class QuantumProgramResult:
                 QuantumProgramResultSerializationFormat.QISKIT_RESULT_JSON_V1: dict_to_qiskit_convert,
                 QuantumProgramResultSerializationFormat.CUDAQ_SAMPLE_RESULT_JSON_V1: cudaq_sample_to_qiskit_convert,
                 QuantumProgramResultSerializationFormat.CIRQ_RESULT_JSON_V1: cirq_to_qiskit_convert,
+                QuantumProgramResultSerializationFormat.MIMIQ_QCSR_JSON_V1: mimiq_to_qiskit_convert,
             }
 
             return apply_unserialization[self.serialization_format](
@@ -253,6 +258,9 @@ class QuantumProgramResult:
         from qio.utils.conversion.program_result.qiskit_to_cirq import (
             convert as qiskit_to_cirq_convert,
         )
+        from qio.utils.conversion.program_result.mimiq_to_cirq import (
+            convert as mimiq_to_cirq_convert,
+        )
 
         apply_uncompression = {
             QuantumProgramResultCompressionFormat.NONE: json.loads,
@@ -266,6 +274,7 @@ class QuantumProgramResult:
             apply_unserialization = {
                 QuantumProgramResultSerializationFormat.CIRQ_RESULT_JSON_V1: dict_to_cirq_convert,
                 QuantumProgramResultSerializationFormat.QISKIT_RESULT_JSON_V1: qiskit_to_cirq_convert,
+                QuantumProgramResultSerializationFormat.MIMIQ_QCSR_JSON_V1: mimiq_to_cirq_convert,
             }
 
             return apply_unserialization[self.serialization_format](
@@ -276,3 +285,87 @@ class QuantumProgramResult:
             raise Exception(
                 "unsupported unserialization:", self.serialization_format, e
             )
+
+    @classmethod
+    def from_mimiq_qcsr(
+        cls,
+        qcsr_result: "mimiqcircuits.QCSResults",
+        compression_format: QuantumProgramResultCompressionFormat = QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1,
+        **kwargs
+    ) -> "QuantumProgramResult":
+        from qio.utils.conversion.program_result.mimiq_to_dict import (
+            convert as mimiq_to_dict_convert,
+        )
+
+        qcsr_result_dict = mimiq_to_dict_convert(qcsr_result, **kwargs)
+
+        return cls.from_mimiq_qcsr_dict(qcsr_result_dict, compression_format)
+
+    @classmethod
+    def from_mimiq_qcsr_dict(
+        cls,
+        qcsr_dict: Union[str, Dict],
+        compression_format: QuantumProgramResultCompressionFormat = QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1,
+    ) -> "QuantumProgramResult":
+        if isinstance(qcsr_dict, str):
+            qcsr_dict = json.loads(
+                qcsr_dict
+            )
+
+        compression_format = (
+            QuantumProgramResultCompressionFormat.NONE
+            if compression_format
+            == QuantumProgramResultCompressionFormat.UNKNOWN_COMPRESSION_FORMAT
+            else compression_format
+        )
+
+        apply_compression = {
+            QuantumProgramResultCompressionFormat.NONE: json.dumps,
+            QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1: dict_to_zlib,
+        }
+
+        try:
+            return cls(
+                compression_format=compression_format,
+                serialization_format=QuantumProgramResultSerializationFormat.MIMIQ_QCSR_JSON_V1,
+                serialization=apply_compression[compression_format](qcsr_dict),
+            )
+        except Exception as e:
+            raise Exception("unsupported serialization:", compression_format, e)
+
+    @classmethod
+    def to_mimiq_qcsr(self, **kwargs) -> "mimiqcircuit.qcsresults":
+        from qio.utils.conversion.program_result.dict_to_mimiq import (
+            convert as dict_to_mimiq_convert,
+        )
+        from qio.utils.conversion.program_result.qiskit_to_mimiq import (
+            convert as qiskit_to_mimiq_convert,
+        )
+        from qio.utils.conversion.program_result.cirq_to_mimiq import (
+            convert as cirq_to_mimiq_convert,
+        )
+        from qio.utils.conversion.program_result.cudaq_sample_to_mimiq import (
+            convert as cudaq_sample_to_mimiq_convert,
+        )
+
+        apply_uncompression = {
+            QuantumProgramResultCompressionFormat.NONE: json.loads,
+            QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1: zlib_to_dict,
+        }
+
+        serialization = apply_uncompression[self.compression_format](self.serialization)
+
+        try:
+            apply_unserialization = {
+                QuantumProgramResultSerializationFormat.MIMIQ_QCSR_JSON_V1: dict_to_mimiq_convert,
+                QuantumProgramResultSerializationFormat.CIRQ_RESULT_JSON_V1: cirq_to_mimiq_convert,
+                QuantumProgramResultSerializationFormat.QISKIT_RESULT_JSON_V1: qiskit_to_mimiq_convert,
+                QuantumProgramResultSerializationFormat.CUDAQ_SAMPLE_RESULT_JSON_V1: cudaq_sample_to_mimiq_convert,
+            }
+
+            return apply_unserialization[self.serialization_format](
+                serialization, **kwargs
+            )
+
+        except Exception as e:
+            raise Exception("unsupported serialization:", self.serialization_format, e)
