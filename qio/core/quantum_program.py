@@ -169,7 +169,7 @@ class QuantumProgram:
             raise Exception("unsupported unserialization:", self.serialization_format)
 
         return serialization
-
+    
     @classmethod
     def from_cirq_circuit(
         cls,
