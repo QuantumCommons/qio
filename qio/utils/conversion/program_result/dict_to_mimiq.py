@@ -15,14 +15,14 @@
 from mimiqcircuits import QCSResults
 from bitarray import frozenbitarray
 
+
 def convert(result_dict: dict, **kwargs) -> QCSResults:
     """
     Reconstruct a mimiqcircuits.QCSResults object from dict.
     """
     simulator = result_dict.get("backend_name", "unknown")
     version = result_dict.get("backend_version", "unknown")
-    
-    
+
     if "cstates_override" in kwargs:
         cstates = kwargs.pop("cstates_override")
     else:
@@ -50,5 +50,5 @@ def convert(result_dict: dict, **kwargs) -> QCSResults:
         cstates=cstates,
         zstates=zstates,
         amplitudes=amplitudes,
-        timings=timings
+        timings=timings,
     )

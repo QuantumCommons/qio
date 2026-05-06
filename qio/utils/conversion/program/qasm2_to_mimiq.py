@@ -14,5 +14,6 @@
 
 from mimiqcircuits.qasm import loads
 
+
 def convert(circuit_str: str) -> "mimiqcircuits.Circuit":
     return loads(circuit_str)

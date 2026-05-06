@@ -1,4 +1,4 @@
-   # Copyright 2026 Scaleway, Aqora, Quantum Commons
+# Copyright 2026 Scaleway, Aqora, Quantum Commons
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,45 +11,32 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import datetime
 from mimiqcircuits import QCSResults
+
 
 def convert(qcsr: QCSResults, **kwargs) -> dict:
     """
-    Convert a mimiqcircuits.qcsresults object into a dict following qiskit.result format.
+    Convert a mimiqcircuits.qcsresults object into a dict.
     """
-    job_id = kwargs.get("job_id", "unknown")
-    shots = kwargs.get("shots", 0)
-    num_qubits = kwargs.get("num_qubits", 0)
-    
+
     raw_counts = qcsr.histogram()
-    counts_dict = {key.to01(): int(val) for key, val in raw_counts.items()}
-    sim_name = getattr(qcsr, "simulator", "Quantanium")
-    sim_version = getattr(qcsr, 'version', '1.0')
-    memory_slots = len(list(counts_dict.keys())[0]) if counts_dict else 0
+    histogram = {key.to01(): int(val) for key, val in raw_counts.items()}
 
-    experiment_result = [{
-        "shots": shots,
-        "success": True,
-        "meas_level": 2,
-        "data": {
-            "counts": counts_dict
-        },
-        "status": "DONE",
-        "header": {
-            "memory_slots": memory_slots, 
-            "name": "quantanium_circuit",
-            "n_qubits": num_qubits
-        }
-    }]
-
-    return {
-        "backend_name": sim_name,
-        "backend_version": sim_version,
-        "qobj_id": job_id,
-        "job_id": job_id,
-        "success": True,
-        "results": experiment_result,
-        "date": datetime.datetime.now().isoformat(),
-        "status": "DONE"
+    result_dict = {
+        "simulator": getattr(qcsr, "simulator", None),
+        "version": getattr(qcsr, "version", None),
+        "timings": getattr(qcsr, "timings", None),
+        "fidelity_estimate": getattr(qcsr, "fidelity_estimate", None),
+        "average_multi_qubit_gate_error_estimate": getattr(
+            qcsr, "average_multi_qubit_gate_error_estimate", None
+        ),
+        "executions": getattr(qcsr, "executions", None),
+        "samples": getattr(qcsr, "samples", None),
+        "amplitudes": getattr(qcsr, "amplitudes", None),
+        "histogram": histogram,
     }
+
+    if kwargs:
+        result_dict.update(kwargs)
+
+    return result_dict

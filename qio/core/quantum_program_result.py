@@ -291,7 +291,7 @@ class QuantumProgramResult:
         cls,
         qcsr_result: "mimiqcircuits.QCSResults",
         compression_format: QuantumProgramResultCompressionFormat = QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1,
-        **kwargs
+        **kwargs,
     ) -> "QuantumProgramResult":
         from qio.utils.conversion.program_result.mimiq_to_dict import (
             convert as mimiq_to_dict_convert,
@@ -308,9 +308,7 @@ class QuantumProgramResult:
         compression_format: QuantumProgramResultCompressionFormat = QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1,
     ) -> "QuantumProgramResult":
         if isinstance(qcsr_dict, str):
-            qcsr_dict = json.loads(
-                qcsr_dict
-            )
+            qcsr_dict = json.loads(qcsr_dict)
 
         compression_format = (
             QuantumProgramResultCompressionFormat.NONE
@@ -333,7 +331,6 @@ class QuantumProgramResult:
         except Exception as e:
             raise Exception("unsupported serialization:", compression_format, e)
 
-    @classmethod
     def to_mimiq_qcsr(self, **kwargs) -> "mimiqcircuit.qcsresults":
         from qio.utils.conversion.program_result.dict_to_mimiq import (
             convert as dict_to_mimiq_convert,
@@ -343,9 +340,6 @@ class QuantumProgramResult:
         )
         from qio.utils.conversion.program_result.cirq_to_mimiq import (
             convert as cirq_to_mimiq_convert,
-        )
-        from qio.utils.conversion.program_result.cudaq_sample_to_mimiq import (
-            convert as cudaq_sample_to_mimiq_convert,
         )
 
         apply_uncompression = {
@@ -360,7 +354,6 @@ class QuantumProgramResult:
                 QuantumProgramResultSerializationFormat.MIMIQ_QCSR_JSON_V1: dict_to_mimiq_convert,
                 QuantumProgramResultSerializationFormat.CIRQ_RESULT_JSON_V1: cirq_to_mimiq_convert,
                 QuantumProgramResultSerializationFormat.QISKIT_RESULT_JSON_V1: qiskit_to_mimiq_convert,
-                QuantumProgramResultSerializationFormat.CUDAQ_SAMPLE_RESULT_JSON_V1: cudaq_sample_to_mimiq_convert,
             }
 
             return apply_unserialization[self.serialization_format](

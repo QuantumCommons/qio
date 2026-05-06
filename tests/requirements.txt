@@ -10,3 +10,5 @@ numpy
 qiskit-qasm3-import
 ply
 cudaq
+quantanium==1.15.25 
+mimiqcircuits==0.21.6

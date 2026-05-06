@@ -12,15 +12,33 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Union, Dict, Any
-from qio.utils.conversion.program_result.dict_to_cirq import convert as dict_to_cirq_convert
-from qio.utils.conversion.program_result.mimiq_to_dict import convert as mimiq_to_dict_convert
+import numpy as np
+import cirq
 
-def convert(mimiq_data: Union["mimiqcircuits.QCSResults", Dict[str, Any]], **kwargs) -> "cirq.Result":
+
+def convert(qcsr: dict, **kwargs) -> "cirq.Result":
     """
-    Convert a mimiqcircuits.QCSResults object (or its serialized dictionary) into a cirq.Result object.
+    Convert a mimiqcircuits.qcsresults object into a cirq.Result format.
     """
-    if not isinstance(mimiq_data, dict):
-        mimiq_data = mimiq_to_dict_convert(mimiq_data, **kwargs)
-        
-    return dict_to_cirq_convert(mimiq_data, **kwargs)
+    histogram = qcsr.get("histogram", {})
+
+    raw_measurements = []
+
+    for bitstring, count in histogram.items():
+        bits = [int(b) for b in bitstring]
+        for _ in range(count):
+            raw_measurements.append(bits)
+
+    num_qubits = kwargs.get("num_qubits")
+    if num_qubits is None:
+        num_qubits = len(list(histogram.keys())[0]) if histogram else 0
+
+    if not raw_measurements:
+        records = np.empty((0, num_qubits), dtype=np.int8)
+    else:
+        records = np.array(raw_measurements, dtype=np.int8)
+
+    meas_key = kwargs.get("meas_key", "m")
+    measurements = {meas_key: records}
+
+    return cirq.ResultDict(params=cirq.ParamResolver({}), measurements=measurements)

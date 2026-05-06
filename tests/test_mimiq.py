@@ -21,7 +21,7 @@
 import os
 import tempfile
 
-from quantanium.Quantanium import Quantanium 
+from quantanium.Quantanium import Quantanium
 
 from qio.core import (
     QuantumComputationModel,
@@ -49,12 +49,12 @@ def test_global_mimiq_flow():
     program = QuantumProgram.from_qiskit_circuit(
         qc,
         dest_format=QuantumProgramSerializationFormat.QASM_V2,
-        compression_format=QuantumProgramCompressionFormat.NONE
+        compression_format=QuantumProgramCompressionFormat.NONE,
     )
     compressed_program = QuantumProgram.from_qiskit_circuit(
         qc,
         dest_format=QuantumProgramSerializationFormat.QASM_V2,
-        compression_format=QuantumProgramCompressionFormat.ZLIB_BASE64_V1
+        compression_format=QuantumProgramCompressionFormat.ZLIB_BASE64_V1,
     )
 
     backend_data = BackendData(name="quantanium", version="1")
@@ -77,11 +77,15 @@ def test_global_mimiq_flow():
     circuit = model.programs[0].to_qasm2_circuit()
     uncomp_circuit = model.programs[1].to_qasm2_circuit()
 
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.qasm', delete=False) as tmp_file:
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".qasm", delete=False
+    ) as tmp_file:
         tmp_file.write(circuit)
         circuit_tmp_path = tmp_file.name
 
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.qasm', delete=False) as tmp_file:
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".qasm", delete=False
+    ) as tmp_file:
         tmp_file.write(uncomp_circuit)
         uncomp_circuit_tmp_path = tmp_file.name
 
@@ -130,21 +134,21 @@ def test_circuit_conversion_loop_to_qasm2():
     Test conversion from Qiskit ciruit to QASM2.
     """
     original_qc = random_square_qiskit_circuit(4)
-    
+
     prog_uncomp = QuantumProgram.from_qiskit_circuit(
         original_qc,
         dest_format=QuantumProgramSerializationFormat.QASM_V2,
-        compression_format=QuantumProgramCompressionFormat.NONE
+        compression_format=QuantumProgramCompressionFormat.NONE,
     )
     prog_comp = QuantumProgram.from_qiskit_circuit(
         original_qc,
         dest_format=QuantumProgramSerializationFormat.QASM_V2,
-        compression_format=QuantumProgramCompressionFormat.ZLIB_BASE64_V1
+        compression_format=QuantumProgramCompressionFormat.ZLIB_BASE64_V1,
     )
 
     qasm2_str_uncomp = prog_uncomp.to_qasm2_circuit()
     qasm2_str_comp = prog_comp.to_qasm2_circuit()
-    
+
     assert isinstance(qasm2_str_uncomp, str)
     assert qasm2_str_uncomp == qasm2_str_comp
 
@@ -169,12 +173,14 @@ def test_mimiq_result_conversion_integrity():
     measure q[1] -> c[1];
     measure q[2] -> c[2];
     """
-    
+
     shots = 50
     params = QuantumComputationParameters(shots=shots)
     circuit_tmp_path = None
 
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.qasm', delete=False) as tmp_file:
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".qasm", delete=False
+    ) as tmp_file:
         tmp_file.write(circuit)
         circuit_tmp_path = tmp_file.name
 
@@ -182,21 +188,33 @@ def test_mimiq_result_conversion_integrity():
 
     try:
         result = engine.execute(circuit_tmp_path, nsamples=params.shots)
-        
+
         qpr = QuantumProgramResult.from_mimiq_qcsr(
-            result, 
+            result,
             compression_format=QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1,
             shots=shots,
-            num_qubits=3
+            num_qubits=3,
         )
 
-        recovered_qiskit_result = qpr.to_qiskit_result()
+        # test with qiskit result
 
+        recovered_qiskit_result = qpr.to_qiskit_result()
         assert recovered_qiskit_result is not None
         assert recovered_qiskit_result.results[0].shots == shots
-        
+
         recovered_counts = recovered_qiskit_result.get_counts()
-        assert len(recovered_counts) > 0 
+        assert len(recovered_counts) > 0
+        assert sum(recovered_counts.values()) == shots
+
+        # test with cirq result
+
+        recovered_cirq_result = qpr.to_cirq_result()
+        assert recovered_cirq_result is not None
+        assert "m" in recovered_cirq_result.measurements
+        assert len(recovered_cirq_result.measurements["m"]) == shots
+
+        recovered_counts = recovered_cirq_result.histogram(key="m")
+        assert len(recovered_counts) > 0
         assert sum(recovered_counts.values()) == shots
 
     finally:

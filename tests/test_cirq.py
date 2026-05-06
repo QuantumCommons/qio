@@ -103,3 +103,11 @@ def test_global_cirq_flow():
     uncomp_qiskit_result = compressed_qpr.to_qiskit_result()
     assert uncomp_qiskit_result is not None
     print("qiskit result from compressed data:", uncomp_qiskit_result)
+
+    mimiq_qcsr = qpr.to_mimiq_qcsr()
+    assert mimiq_qcsr is not None
+    print("mimiq qcsr:", mimiq_qcsr)
+
+    uncomp_mimiq_qcsr = compressed_qpr.to_mimiq_qcsr()
+    assert uncomp_mimiq_qcsr is not None
+    print("mimiq qcsr from compressed data:", uncomp_mimiq_qcsr)

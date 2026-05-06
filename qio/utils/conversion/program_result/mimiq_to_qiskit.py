@@ -12,15 +12,59 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Union, Dict, Any
-from qio.utils.conversion.program_result.dict_to_qiskit import convert as dict_to_qiskit_convert
-from qio.utils.conversion.program_result.mimiq_to_dict import convert as mimiq_to_dict_convert
+import datetime
+from qiskit.result import Result
+from qiskit.result.models import ExperimentResult, ExperimentResultData
 
-def convert(mimiq_data: Union["mimiqcircuits.QCSResults", Dict[str, Any]], **kwargs) -> "qiskit.result.Result":
+
+def _make_expresult_from_mimiq_qcsr(qcsr: dict, **kwargs) -> ExperimentResult:
+
+    histogram = qcsr.get("histogram", {})
+    shots = kwargs.get(
+        "shots", qcsr.get("shots", qcsr.get("samples", qcsr.get("executions", 0)))
+    )
+
+    num_qubits = kwargs.get("num_qubits")
+    if num_qubits is None and histogram:
+        num_qubits = len(list(histogram.keys())[0])
+    else:
+        num_qubits = num_qubits or 0
+
+    exp_result_data = ExperimentResultData(counts=histogram)
+
+    if "amplitudes" in qcsr and qcsr["amplitudes"]:
+        exp_result_data.statevector = qcsr["amplitudes"]
+
+    return ExperimentResult(
+        shots=shots,
+        success=True,
+        status="DONE",
+        data=exp_result_data,
+        header={
+            "n_qubits": num_qubits,
+            "memory_slots": num_qubits,
+            "name": "quantanium_circuit",
+        },
+    )
+
+
+def convert(qcsr: dict, **kwargs) -> Result:
     """
-    Convert a mimiqcircuits.QCSResults object (or its serialized dictionary) into a qiskit.result.Result object.
+    Convert a mimiqcircuits.qcsresults object into a qiskit.result format.
     """
-    if not isinstance(mimiq_data, dict):
-        mimiq_data = mimiq_to_dict_convert(mimiq_data, **kwargs)
-        
-    return dict_to_qiskit_convert(mimiq_data, **kwargs)
+    kwargs = kwargs or {}
+
+    backend_name = qcsr.get("simulator", "Quantanium")
+    backend_version = qcsr.get("version", "1.0")
+    job_id = kwargs.get("job_id", "unknown")
+
+    return Result(
+        backend_name=backend_name,
+        backend_version=backend_version,
+        job_id=job_id,
+        qobj_id=job_id,
+        results=[_make_expresult_from_mimiq_qcsr(qcsr, **kwargs)],
+        date=datetime.datetime.now().isoformat(),
+        status="DONE",
+        **kwargs,
+    )
