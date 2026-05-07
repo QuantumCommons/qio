@@ -96,3 +96,7 @@ def test_global_qiskit_flow():
     cirq_result = compressed_qpr.to_cirq_result()
     assert cirq_result is not None
     print("Cirq result:", cirq_result)
+
+    mimiq_result = compressed_qpr.to_mimiq_qcsr()
+    assert mimiq_result is not None
+    print("Mimiq result:", mimiq_result)
