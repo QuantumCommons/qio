@@ -122,10 +122,13 @@ def test_global_mimiq_flow():
     qpr = QuantumProgramResult.from_json_str(qpr_json)
     compressed_qpr = QuantumProgramResult.from_json_str(compressed_qpr_json)
 
-    qiskit_result = qpr.to_qiskit_result()
+    kwargs = {}
+    kwargs["backend_name"] = "quantanium"
+
+    qiskit_result = qpr.to_qiskit_result(**kwargs)
     assert qiskit_result is not None
 
-    uncomp_qiskit_result = compressed_qpr.to_qiskit_result()
+    uncomp_qiskit_result = compressed_qpr.to_qiskit_result(**kwargs)
     assert uncomp_qiskit_result is not None
 
 

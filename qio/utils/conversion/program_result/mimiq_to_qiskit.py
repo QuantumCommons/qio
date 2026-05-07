@@ -54,17 +54,22 @@ def convert(qcsr: dict, **kwargs) -> Result:
     """
     kwargs = kwargs or {}
 
-    backend_name = qcsr.get("simulator", "Quantanium")
-    backend_version = qcsr.get("version", "1.0")
-    job_id = kwargs.get("job_id", "unknown")
+    backend_name = kwargs.pop("backend_name", qcsr.get("simulator", "Quantanium"))
+    backend_version = kwargs.pop("version", qcsr.get("backend_version", "1.0"))
+    job_id = kwargs.pop("job_id", "unknown")
+    qobj_id = kwargs.pop("qobj_id", job_id)
+    success = kwargs.pop("success", True)
+    status = kwargs.pop("status", "DONE")
+    date = kwargs.pop("date", datetime.datetime.now().isoformat())
 
     return Result(
         backend_name=backend_name,
         backend_version=backend_version,
         job_id=job_id,
-        qobj_id=job_id,
+        qobj_id=qobj_id,
+        success=success,
         results=[_make_expresult_from_mimiq_qcsr(qcsr, **kwargs)],
-        date=datetime.datetime.now().isoformat(),
-        status="DONE",
+        date=date,
+        status=status,
         **kwargs,
     )
