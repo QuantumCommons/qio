@@ -34,9 +34,7 @@ jobs:
       run: pip install dist/qio-${version}-py3-none-any.whl
 
     - name: Install test
-      run: |
-        pip install -r tests/requirements.txt
-        pip install mimiqcircuits==0.21.6 quantanium==1.15.25 --no-deps
+      run: pip install -r tests/requirements.txt
 
     - name: Run test
       run: pytest -s --showprogress -vv tests/
