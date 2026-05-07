@@ -55,12 +55,14 @@ def convert(qcsr: dict, **kwargs) -> Result:
     kwargs = kwargs or {}
 
     backend_name = kwargs.pop("backend_name", qcsr.get("simulator", "Quantanium"))
-    backend_version = kwargs.pop("version", qcsr.get("backend_version", "1.0"))
+    backend_version = kwargs.pop("backend_version", qcsr.get("backend_version", "1.0"))
     job_id = kwargs.pop("job_id", "unknown")
     qobj_id = kwargs.pop("qobj_id", job_id)
     success = kwargs.pop("success", True)
     status = kwargs.pop("status", "DONE")
     date = kwargs.pop("date", datetime.datetime.now().isoformat())
+
+    kwargs.pop("results", None)
 
     return Result(
         backend_name=backend_name,
