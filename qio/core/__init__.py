@@ -32,3 +32,4 @@ from .quantum_noise_model import (
     QuantumNoiseModelCompressionFormat,
     QuantumNoiseModel,
 )
+from .program import Program, ProgramSerializationFormat, ProgramCompressionFormat
