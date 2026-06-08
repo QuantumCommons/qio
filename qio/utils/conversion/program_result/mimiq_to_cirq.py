@@ -38,7 +38,7 @@ def convert(qcsr: dict, **kwargs) -> "cirq.Result":
     else:
         records = np.array(raw_measurements, dtype=np.int8)
 
-    meas_key = kwargs.get("meas_key", "m")
+    meas_key = kwargs.get("meas_key", "result")
     measurements = {meas_key: records}
 
     return cirq.ResultDict(params=cirq.ParamResolver({}), measurements=measurements)

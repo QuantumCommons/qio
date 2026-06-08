@@ -213,10 +213,10 @@ def test_mimiq_result_conversion_integrity():
 
         recovered_cirq_result = qpr.to_cirq_result()
         assert recovered_cirq_result is not None
-        assert "m" in recovered_cirq_result.measurements
-        assert len(recovered_cirq_result.measurements["m"]) == shots
+        assert "result" in recovered_cirq_result.measurements
+        assert len(recovered_cirq_result.measurements["result"]) == shots
 
-        recovered_counts = recovered_cirq_result.histogram(key="m")
+        recovered_counts = recovered_cirq_result.histogram(key="result")
         assert len(recovered_counts) > 0
         assert sum(recovered_counts.values()) == shots
 

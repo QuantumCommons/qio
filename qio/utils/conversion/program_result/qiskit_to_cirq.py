@@ -27,7 +27,7 @@ def _extract_measurement_key(experiment_result: dict) -> str:
     return "m"
 
 
-def convert(result_dict: dict) -> ResultDict:
+def convert(result_dict: dict, **kwargs) -> ResultDict:
     experiment = result_dict.get("results", [{}])[0]
     m_key = _extract_measurement_key(experiment)
 
@@ -59,4 +59,4 @@ def convert(result_dict: dict) -> ResultDict:
 
     measurements = {m_key: np.array(all_shots)}
 
-    return ResultDict(params=result_dict.pop("params", None), measurements=measurements)
+    return ResultDict(params=kwargs.pop("params", None), measurements=measurements)
