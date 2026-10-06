@@ -46,14 +46,15 @@ NONE = Compression.NONE
 ZLIB = Compression.ZLIB_BASE64_V1
 
 
-# ---------------------------------------------------------------------------
-# Format checkers (one per SDK / serialization format)
-# Signature: check(result, expected: Optional[ReferenceCircuit]) -> None
-# ---------------------------------------------------------------------------
+# check format (one per SDK / serialization format)
+
+
 def check_cirq(result, expected: Optional[ReferenceCircuit] = None) -> None:
     import cirq
 
-    assert isinstance(result, cirq.Circuit), f"expected cirq.Circuit, got {type(result)}"
+    assert isinstance(
+        result, cirq.Circuit
+    ), f"expected cirq.Circuit, got {type(result)}"
     if expected is not None:
         assert len(result.all_qubits()) == expected.n_qubits, (
             len(result.all_qubits()),
@@ -61,15 +62,36 @@ def check_cirq(result, expected: Optional[ReferenceCircuit] = None) -> None:
         )
 
 
+def _qiskit_operations(qc) -> List[Tuple[str, Tuple[int, ...]]]:
+    """Normalizes a Qiskit circuit to (gate_name, qubit_indices) operations."""
+    return [
+        (instruction.name, tuple(qubit.index for qubit in qargs))
+        for instruction, qargs, _ in qc.data
+    ]
+
+
+def _expected_qiskit_operations(
+    expected: ReferenceCircuit,
+) -> List[Tuple[str, Tuple[int, ...]]]:
+    return [(gate, tuple(indices)) for gate, _params, indices in expected.gates]
+
+
 def check_qiskit(result, expected: Optional[ReferenceCircuit] = None) -> None:
+    """Strict check for a *created* Qiskit circuit: name, qubit count and the
+    full operation sequence must match the reference specification."""
     from qiskit import QuantumCircuit
 
-    assert isinstance(result, QuantumCircuit), f"expected QuantumCircuit, got {type(result)}"
+    assert isinstance(
+        result, QuantumCircuit
+    ), f"expected QuantumCircuit, got {type(result)}"
     if expected is not None:
         assert result.num_qubits == expected.n_qubits, (
             result.num_qubits,
             expected.n_qubits,
         )
+        assert result.name == expected.name, (result.name, expected.name)
+        actual = _qiskit_operations(result)
+        assert actual == _expected_qiskit_operations(expected), (actual, expected.gates)
 
 
 def check_cudaq(result, expected: Optional[ReferenceCircuit] = None) -> None:
@@ -82,7 +104,9 @@ def check_mimiq(result, expected: Optional[ReferenceCircuit] = None) -> None:
     import mimiqcircuits
 
     assert result is not None, "MIMIQ circuit is None"
-    assert isinstance(result, mimiqcircuits.Circuit), f"expected mimiq Circuit, got {type(result)}"
+    assert isinstance(
+        result, mimiqcircuits.Circuit
+    ), f"expected mimiq Circuit, got {type(result)}"
     num_qubits = getattr(result, "num_qubits", None)
     if callable(num_qubits):
         num_qubits = num_qubits()
@@ -154,15 +178,18 @@ def _qasm_num_qubits(source: str, version: int) -> int:
     return num_qubits
 
 
-# ---------------------------------------------------------------------------
 # Equivalence oracles
-# ---------------------------------------------------------------------------
+
+
 def _cirq_unitary(circuit) -> Any:
     import cirq
     from cirq import MeasurementGate
 
     operations = [
-        op for moment in circuit for op in moment if not isinstance(op.gate, MeasurementGate)
+        op
+        for moment in circuit
+        for op in moment
+        if not isinstance(op.gate, MeasurementGate)
     ]
     return cirq.unitary(cirq.Circuit(operations))
 
@@ -222,9 +249,9 @@ def assert_counts(kernel, expected: ReferenceCircuit) -> None:
     assert actual_keys == set(expected.expected_counts.keys()), (actual_keys, expected)
 
 
-# ---------------------------------------------------------------------------
 # Generic driver + pipeline
-# ---------------------------------------------------------------------------
+
+
 @dataclass(frozen=True)
 class Step:
     fn: Callable
@@ -260,7 +287,9 @@ def run_path(edge: ConversionEdge, circuit: ReferenceCircuit) -> Any:
     """Runs a full conversion path (input -> steps) and applies its oracle."""
     current = edge.input_fn(circuit)
     for step in edge.steps:
-        current = convert(current, step.fn, expected=circuit, checks=step.checks, **step.kwargs)
+        current = convert(
+            current, step.fn, expected=circuit, checks=step.checks, **step.kwargs
+        )
 
     if edge.oracle == "unitary":
         actual = _to_unitary(current)
@@ -286,10 +315,9 @@ def _to_unitary(circuit) -> Any:
     raise TypeError(f"cannot extract unitary from {type(circuit)}")
 
 
-# ---------------------------------------------------------------------------
 # Declarative registries
-# ---------------------------------------------------------------------------
-_INPUT_FNS = {
+
+INPUT_FNS = {
     "cirq": lambda c: c.cirq(),
     "qiskit": lambda c: c.qiskit(),
 }
@@ -314,7 +342,11 @@ def build_edges(compression: Compression) -> Tuple[ConversionEdge, ...]:
             _format_content_checks(fmt) if content_checks_ok else ()
         )
         steps = [
-            Step(write_fn, {"dest_format": fmt, "compression_format": compression}, checks)
+            Step(
+                write_fn,
+                {"dest_format": fmt, "compression_format": compression},
+                checks,
+            )
         ]
         if read_fn is not None:
             steps.append(Step(read_fn, {}, (read_check,)))
@@ -322,22 +354,125 @@ def build_edges(compression: Compression) -> Tuple[ConversionEdge, ...]:
             ConversionEdge(edge_id, _INPUT_FNS[input_kind], tuple(steps), oracle=oracle)
         )
 
-    add("cirq->qasm2->cirq", "cirq", producer, Serialization.QASM_V2, QuantumProgram.to_cirq_circuit, check_cirq)
-    add("cirq->qasm3->cirq", "cirq", producer, Serialization.QASM_V3, QuantumProgram.to_cirq_circuit, check_cirq)
-    add("cirq->cirqjson->cirq", "cirq", producer, Serialization.CIRQ_CIRCUIT_JSON_V1, QuantumProgram.to_cirq_circuit, check_cirq)
-    add("cirq->qasm2->qiskit", "cirq", producer, Serialization.QASM_V2, QuantumProgram.to_qiskit_circuit, check_qiskit)
-    add("cirq->qasm3->qiskit", "cirq", producer, Serialization.QASM_V3, QuantumProgram.to_qiskit_circuit, check_qiskit)
-    add("cirq->qasm3->cudaq", "cirq", producer, Serialization.QASM_V3, QuantumProgram.to_cudaq_kernel, check_cudaq, oracle="counts")
-    add("cirq->qasm2->mimiq", "cirq", producer, Serialization.QASM_V2, QuantumProgram.to_mimiq_circuit, check_mimiq, oracle="structural")
+    add(
+        "cirq->qasm2->cirq",
+        "cirq",
+        producer,
+        Serialization.QASM_V2,
+        QuantumProgram.to_cirq_circuit,
+        check_cirq,
+    )
+    add(
+        "cirq->qasm3->cirq",
+        "cirq",
+        producer,
+        Serialization.QASM_V3,
+        QuantumProgram.to_cirq_circuit,
+        check_cirq,
+    )
+    add(
+        "cirq->cirqjson->cirq",
+        "cirq",
+        producer,
+        Serialization.CIRQ_CIRCUIT_JSON_V1,
+        QuantumProgram.to_cirq_circuit,
+        check_cirq,
+    )
+    add(
+        "cirq->qasm2->qiskit",
+        "cirq",
+        producer,
+        Serialization.QASM_V2,
+        QuantumProgram.to_qiskit_circuit,
+        check_qiskit,
+    )
+    add(
+        "cirq->qasm3->qiskit",
+        "cirq",
+        producer,
+        Serialization.QASM_V3,
+        QuantumProgram.to_qiskit_circuit,
+        check_qiskit,
+    )
+    add(
+        "cirq->qasm3->cudaq",
+        "cirq",
+        producer,
+        Serialization.QASM_V3,
+        QuantumProgram.to_cudaq_kernel,
+        check_cudaq,
+        oracle="counts",
+    )
+    add(
+        "cirq->qasm2->mimiq",
+        "cirq",
+        producer,
+        Serialization.QASM_V2,
+        QuantumProgram.to_mimiq_circuit,
+        check_mimiq,
+        oracle="structural",
+    )
 
     producer = QuantumProgram.from_qiskit_circuit
-    add("qiskit->qasm2->qiskit", "qiskit", producer, Serialization.QASM_V2, QuantumProgram.to_qiskit_circuit, check_qiskit)
-    add("qiskit->qasm3->qiskit", "qiskit", producer, Serialization.QASM_V3, QuantumProgram.to_qiskit_circuit, check_qiskit)
-    add("qiskit->qasm2->cirq", "qiskit", producer, Serialization.QASM_V2, QuantumProgram.to_cirq_circuit, check_cirq)
-    add("qiskit->qasm3->cirq", "qiskit", producer, Serialization.QASM_V3, QuantumProgram.to_cirq_circuit, check_cirq)
-    add("qiskit->qasm3->cudaq", "qiskit", producer, Serialization.QASM_V3, QuantumProgram.to_cudaq_kernel, check_cudaq, oracle="counts")
-    add("qiskit->qasm2->cudaq", "qiskit", producer, Serialization.QASM_V2, QuantumProgram.to_cudaq_kernel, check_cudaq, oracle="counts")
-    add("qiskit->qasm2->mimiq", "qiskit", producer, Serialization.QASM_V2, QuantumProgram.to_mimiq_circuit, check_mimiq, oracle="structural")
+    add(
+        "qiskit->qasm2->qiskit",
+        "qiskit",
+        producer,
+        Serialization.QASM_V2,
+        QuantumProgram.to_qiskit_circuit,
+        check_qiskit,
+    )
+    add(
+        "qiskit->qasm3->qiskit",
+        "qiskit",
+        producer,
+        Serialization.QASM_V3,
+        QuantumProgram.to_qiskit_circuit,
+        check_qiskit,
+    )
+    add(
+        "qiskit->qasm2->cirq",
+        "qiskit",
+        producer,
+        Serialization.QASM_V2,
+        QuantumProgram.to_cirq_circuit,
+        check_cirq,
+    )
+    add(
+        "qiskit->qasm3->cirq",
+        "qiskit",
+        producer,
+        Serialization.QASM_V3,
+        QuantumProgram.to_cirq_circuit,
+        check_cirq,
+    )
+    add(
+        "qiskit->qasm3->cudaq",
+        "qiskit",
+        producer,
+        Serialization.QASM_V3,
+        QuantumProgram.to_cudaq_kernel,
+        check_cudaq,
+        oracle="counts",
+    )
+    add(
+        "qiskit->qasm2->cudaq",
+        "qiskit",
+        producer,
+        Serialization.QASM_V2,
+        QuantumProgram.to_cudaq_kernel,
+        check_cudaq,
+        oracle="counts",
+    )
+    add(
+        "qiskit->qasm2->mimiq",
+        "qiskit",
+        producer,
+        Serialization.QASM_V2,
+        QuantumProgram.to_mimiq_circuit,
+        check_mimiq,
+        oracle="structural",
+    )
 
     return tuple(edges)
 
@@ -370,12 +505,44 @@ def _cirq_program(dest_format: Serialization) -> QuantumProgram:
 
 
 UNSUPPORTED_CONVERSIONS = (
-    ("from_cirq_circuit -> QASM_V1", lambda: QuantumProgram.from_cirq_circuit(_bell_cirq(), dest_format=Serialization.QASM_V1)),
-    ("from_qiskit_circuit -> QASM_V1", lambda: QuantumProgram.from_qiskit_circuit(_bell_qiskit(), dest_format=Serialization.QASM_V1)),
-    ("from_cudaq_kernel -> QASM_V3", lambda: QuantumProgram.from_cudaq_kernel(_bell_cudaq(), dest_format=Serialization.QASM_V3)),
-    ("from_cudaq_kernel -> CIRQJSON", lambda: QuantumProgram.from_cudaq_kernel(_bell_cudaq(), dest_format=Serialization.CIRQ_CIRCUIT_JSON_V1)),
-    ("to_qasm2_circuit on QASM_V3", lambda: _cirq_program(Serialization.QASM_V3).to_qasm2_circuit()),
-    ("to_mimiq_circuit on QASM_V3", lambda: _cirq_program(Serialization.QASM_V3).to_mimiq_circuit()),
-    ("to_mimiq_circuit on CIRQJSON", lambda: _cirq_program(Serialization.CIRQ_CIRCUIT_JSON_V1).to_mimiq_circuit()),
-    ("to_cudaq_kernel on CIRQJSON", lambda: _cirq_program(Serialization.CIRQ_CIRCUIT_JSON_V1).to_cudaq_kernel()),
+    (
+        "from_cirq_circuit -> QASM_V1",
+        lambda: QuantumProgram.from_cirq_circuit(
+            _bell_cirq(), dest_format=Serialization.QASM_V1
+        ),
+    ),
+    (
+        "from_qiskit_circuit -> QASM_V1",
+        lambda: QuantumProgram.from_qiskit_circuit(
+            _bell_qiskit(), dest_format=Serialization.QASM_V1
+        ),
+    ),
+    (
+        "from_cudaq_kernel -> QASM_V3",
+        lambda: QuantumProgram.from_cudaq_kernel(
+            _bell_cudaq(), dest_format=Serialization.QASM_V3
+        ),
+    ),
+    (
+        "from_cudaq_kernel -> CIRQJSON",
+        lambda: QuantumProgram.from_cudaq_kernel(
+            _bell_cudaq(), dest_format=Serialization.CIRQ_CIRCUIT_JSON_V1
+        ),
+    ),
+    (
+        "to_qasm2_circuit on QASM_V3",
+        lambda: _cirq_program(Serialization.QASM_V3).to_qasm2_circuit(),
+    ),
+    (
+        "to_mimiq_circuit on QASM_V3",
+        lambda: _cirq_program(Serialization.QASM_V3).to_mimiq_circuit(),
+    ),
+    (
+        "to_mimiq_circuit on CIRQJSON",
+        lambda: _cirq_program(Serialization.CIRQ_CIRCUIT_JSON_V1).to_mimiq_circuit(),
+    ),
+    (
+        "to_cudaq_kernel on CIRQJSON",
+        lambda: _cirq_program(Serialization.CIRQ_CIRCUIT_JSON_V1).to_cudaq_kernel(),
+    ),
 )

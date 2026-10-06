@@ -59,8 +59,10 @@ _SINGLE_QUBIT_GATES = {
 }
 _TWO_QUBIT_GATES = {"cx", "cz"}
 
+
 def _fmt(num: float) -> str:
     return repr(float(num))
+
 
 @dataclass
 class ReferenceCircuit:
@@ -89,8 +91,8 @@ class ReferenceCircuit:
                     "z": cirq.Z,
                     "s": cirq.S,
                     "t": cirq.T,
-                    "sdg": cirq.S ** -1,
-                    "tdg": cirq.T ** -1,
+                    "sdg": cirq.S**-1,
+                    "tdg": cirq.T**-1,
                     "cx": cirq.CNOT,
                     "cz": cirq.CZ,
                 }[gate]
@@ -103,7 +105,7 @@ class ReferenceCircuit:
     def _build_qiskit(self) -> "qiskit.QuantumCircuit":
         from qiskit import QuantumCircuit
 
-        qc = QuantumCircuit(self.n_qubits, self.n_qubits)
+        qc = QuantumCircuit(self.n_qubits, self.n_qubits, name=self.name)
         for gate, params, indices in self.gates:
             targets = list(indices)
             if gate == "measure":
