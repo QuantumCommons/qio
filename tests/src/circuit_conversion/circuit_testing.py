@@ -43,6 +43,16 @@ Design:
   declared one is tolerated and recorded. ``loss_report()`` + the
   ``conftest.py`` terminal summary surface the observed losses at the end of
   the session.
+- **Circuit-level information** : beyond the gate chain, the final SDK checks
+  also track what survives of the circuit metadata - circuit name, global
+  phase, Qiskit metadata dict, qubit topology (named/grid labels) and the
+  measurement mapping (classical-bit slots / Cirq measurement keys). QASM and
+  CUDA-Q paths declare these as inherent ``known_losses``; CirqJSON is exact.
+- **Feature coverage** : :data:`CIRCUIT_FEATURE_COVERAGE` records which of the
+  circuit features (qubit topology, classical control flow, metadata & global
+  phase, symbolic parameters, calibrations, measurement mapping) the battery
+  actually exercises. The ``conftest.py`` terminal summary prints it as a
+  matrix so the report states what it does and does not verify.
 - **Input circuits are NOT checked** : they are built statically and trusted
   (``ReferenceCircuit`` builders), so ``run_path`` converts them without any
   verification; only intermediate and final objects are checked.
@@ -65,7 +75,7 @@ from qio.core import (
     QuantumProgramSerializationFormat,
 )
 
-from reference_circuits import ReferenceCircuit, get_reference_circuit
+from reference_circuits import Param, ReferenceCircuit, get_reference_circuit
 
 Compression = QuantumProgramCompressionFormat
 Serialization = QuantumProgramSerializationFormat
@@ -83,18 +93,11 @@ ZLIB = Compression.ZLIB_BASE64_V1
 # compared against the reference specification (``expected.gates``).
 
 
-def _cirq_qubit_index(qubit: Any) -> int:
-    import re
-
-    import cirq
-
-    if isinstance(qubit, cirq.LineQubit):
-        return qubit.x
-    name = str(getattr(qubit, "name", qubit))
-    match = re.search(r"(\d+)$", name)
-    if match is None:
-        raise AssertionError(f"cannot derive a qubit index from {qubit!r}")
-    return int(match.group(1))
+def _qubit_order(circuit) -> Dict[Any, int]:
+    """Qubit -> canonical index, ordered by label so the reference gate indices
+    (0..n-1) are independent of the qubit type (LineQubit, NamedQubit or
+    GridQubit)."""
+    return {q: i for i, q in enumerate(sorted(circuit.all_qubits(), key=str))}
 
 
 # Reversed reference mapping: cirq gate class (or ZPowGate exponent) -> name.
@@ -120,14 +123,37 @@ def _zpow_exponent_name(exponent: float) -> str:
     return "z"
 
 
-def _cirq_gate_params(gate: Any) -> Tuple[float, ...]:
+def _cirq_gate_params(gate: Any) -> Tuple[Param, ...]:
     import math
 
     name = type(gate).__name__
     if name in ("Rx", "Ry", "Rz"):
         rads = getattr(gate, "_rads", None)
-        return (rads if rads is not None else float(gate.exponent) * math.pi,)
+        if rads is None:
+            rads = float(gate.exponent) * math.pi
+        if isinstance(rads, (int, float)):
+            return (float(rads),)
+        # Sympy symbol / symbolic expression: canonicalize to the same "~<name>"
+        # marker used by the reference circuit spec.
+        return (f"~{rads}",)
     return ()
+
+
+def _cirq_topology(circuit) -> Tuple[str, ...]:
+    """Canonical qubit labels of a Cirq circuit, in reference index order."""
+    import cirq
+
+    order = _qubit_order(circuit)
+    labels = [None] * len(order)
+    for qubit, index in order.items():
+        if isinstance(qubit, cirq.LineQubit):
+            label = f"q{qubit.x}"
+        elif isinstance(qubit, cirq.GridQubit):
+            label = f"({qubit.row},{qubit.col})"
+        else:  # cirq.NamedQubit / subclasses
+            label = str(qubit)
+        labels[index] = label
+    return tuple(labels)
 
 
 def _cirq_gate_name(gate: Any) -> str:
@@ -139,12 +165,13 @@ def _cirq_gate_name(gate: Any) -> str:
     return _CIRQ_GATE_NAMES[name]
 
 
-def _cirq_operations(circuit) -> List[Tuple[str, Tuple[float, ...], Tuple[int, ...]]]:
+def _cirq_operations(circuit) -> List[Tuple[str, Tuple[Param, ...], Tuple[int, ...]]]:
     import cirq
 
+    order = _qubit_order(circuit)
     ops = []
     for op in circuit.all_operations():
-        indices = tuple(_cirq_qubit_index(q) for q in op.qubits)
+        indices = tuple(order[q] for q in op.qubits)
         if isinstance(op.gate, cirq.MeasurementGate):
             # Split multi-qubit measurements into one canonical "measure" op
             # per qubit so merged terminal measurements match the reference.
@@ -154,7 +181,7 @@ def _cirq_operations(circuit) -> List[Tuple[str, Tuple[float, ...], Tuple[int, .
     return ops
 
 
-def _qiskit_operations(qc) -> List[Tuple[str, Tuple[float, ...], Tuple[int, ...]]]:
+def _qiskit_operations(qc) -> List[Tuple[str, Tuple[Param, ...], Tuple[int, ...]]]:
     ops = []
     for instr in qc.data:
         operation = instr.operation
@@ -162,9 +189,18 @@ def _qiskit_operations(qc) -> List[Tuple[str, Tuple[float, ...], Tuple[int, ...]
         if operation.name == "measure":
             ops.append(("measure", (), indices))
         else:
-            params = tuple(float(p) for p in operation.params)
+            params = tuple(_param_marker(p) for p in operation.params)
             ops.append((operation.name, params, indices))
     return ops
+
+
+def _param_marker(param: Any) -> Param:
+    """Canonicalizes a gate parameter for the op-chain comparison: floats stay
+    floats, symbolic expressions (Qiskit Parameter / Sympy symbol) collapse to
+    the same "~<name>" marker used by the reference circuit spec."""
+    if isinstance(param, (int, float)):
+        return float(param)
+    return f"~{param}"
 
 
 _MIMIQ_GATE_NAMES = {
@@ -185,7 +221,7 @@ _MIMIQ_GATE_NAMES = {
 }
 
 
-def _mimiq_operations(circuit) -> List[Tuple[str, Tuple[float, ...], Tuple[int, ...]]]:
+def _mimiq_operations(circuit) -> List[Tuple[str, Tuple[Param, ...], Tuple[int, ...]]]:
     ops = []
     for instr in circuit.instructions:
         gate = instr.operation
@@ -208,7 +244,7 @@ def _mimiq_operations(circuit) -> List[Tuple[str, Tuple[float, ...], Tuple[int, 
 
 def _qasm_operations(
     source: str, version: int
-) -> List[Tuple[str, Tuple[float, ...], Tuple[int, ...]]]:
+) -> List[Tuple[str, Tuple[Param, ...], Tuple[int, ...]]]:
     # Independent parsers (Qiskit's own), not the qio converters under test.
     from qiskit import qasm2, qasm3
 
@@ -218,24 +254,30 @@ def _qasm_operations(
 
 def _cirqjson_operations(
     source: str,
-) -> List[Tuple[str, Tuple[float, ...], Tuple[int, ...]]]:
+) -> List[Tuple[str, Tuple[Param, ...], Tuple[int, ...]]]:
     import cirq
 
     return _cirq_operations(cirq.read_json(json_text=source))
 
 
 def _params_close(
-    a: Tuple[float, ...], b: Tuple[float, ...], atol: float = 1e-6
+    a: Tuple[Param, ...], b: Tuple[Param, ...], atol: float = 1e-6
 ) -> bool:
     import math
 
     if len(a) != len(b):
         return False
-    # Exact equality short-circuits; isclose covers the ~10-digit rounding
-    # introduced by ``cirq.to_qasm`` when it serializes rotation angles.
-    return all(
-        x == y or math.isclose(x, y, rel_tol=atol, abs_tol=atol) for x, y in zip(a, b)
-    )
+    for x, y in zip(a, b):
+        if isinstance(x, str) or isinstance(y, str):
+            # Symbolic markers compare by identity ("~theta" == "~theta").
+            if x != y:
+                return False
+            continue
+        # Exact equality short-circuits; isclose covers the ~10-digit rounding
+        # introduced by ``cirq.to_qasm`` when it serializes rotation angles.
+        if not (x == y or math.isclose(x, y, rel_tol=atol, abs_tol=atol)):
+            return False
+    return True
 
 
 # Information-loss tracking (objectives: highlight inherent conversion losses,
@@ -260,6 +302,31 @@ def _params_close(
 
 LOSS_ROTATION_PRECISION = "rotation_precision"
 LOSS_CUDAQ_GATE_DECOMPOSITION = "cudaq_gate_decomposition"
+LOSS_CIRCUIT_NAME = "circuit_name"
+LOSS_GLOBAL_PHASE = "global_phase"
+LOSS_CIRCUIT_METADATA = "circuit_metadata"
+LOSS_QUBIT_TOPOLOGY = "qubit_topology"
+LOSS_MEASUREMENT_MAPPING = "measurement_mapping"
+LOSS_SYMBOLIC_PARAMS = "symbolic_parameters"
+
+# Circuit-level information that QASM (2/3) and the CUDA-Q gate-basis rewrite
+# inherently drop; declared as known losses on the QASM/CUDA-Q edges. The
+# CirqJSON edge declares none of them: CirqJSON is exact for these properties.
+QASM_CIRCUIT_INFO_LOSSES = (
+    LOSS_CIRCUIT_NAME,
+    LOSS_GLOBAL_PHASE,
+    LOSS_CIRCUIT_METADATA,
+    LOSS_QUBIT_TOPOLOGY,
+    LOSS_MEASUREMENT_MAPPING,
+)
+
+
+def _info_and(*base: str) -> Tuple[str, ...]:
+    """``known_losses`` for edges whose terminal SDK is checked for the
+    circuit-level information: the OpenQASM-inherent circuit-info losses are
+    always declared (QASM cannot carry name/phase/metadata/topology/mapping or
+    rewrites the measurement mapping), plus the given ``base`` losses."""
+    return QASM_CIRCUIT_INFO_LOSSES + tuple(base)
 
 _LOSS_DESCRIPTIONS = {
     LOSS_ROTATION_PRECISION: (
@@ -273,6 +340,40 @@ _LOSS_DESCRIPTIONS = {
         "registers; the qubit count is preserved and the end-of-chain unitary is "
         "checked by the unitary oracle, so this is a structural - not semantic - "
         "rewrite"
+    ),
+    LOSS_CIRCUIT_NAME: (
+        "the circuit name (ReferenceCircuit.name, carried by the Qiskit builder) "
+        "is not part of OpenQASM: every QASM round trip regenerates it (e.g. "
+        "'circuit-42'); Cirq circuits carry no name at all"
+    ),
+    LOSS_GLOBAL_PHASE: (
+        "Qiskit circuit.global_phase is not expressible in OpenQASM (no syntax in "
+        "QASM2, dropped by QASM3 export), so a non-zero phase is lost on any QASM "
+        "round trip; the unitary oracle intentionally ignores global phases, so "
+        "this is tracked here instead"
+    ),
+    LOSS_CIRCUIT_METADATA: (
+        "the Qiskit circuit.metadata dict is dropped by every intermediate format "
+        "(QASM/CirqJSON/CUDA-Q); only a natively-built Qiskit circuit carries it"
+    ),
+    LOSS_QUBIT_TOPOLOGY: (
+        "qubit topology (Cirq NamedQubit/GridQubit labels, register names) is "
+        "flattened to a linear q[i] array by OpenQASM exports; only the CirqJSON "
+        "intermediate preserves the named/grid labels, and only the Cirq SDK can "
+        "re-read them"
+    ),
+    LOSS_MEASUREMENT_MAPPING: (
+        "the classical side of measurements is not preserved verbatim: the "
+        "qubit -> classical-bit assignment and the Cirq measurement keys can be "
+        "reordered or merged by QASM/CUDA-Q round trips (e.g. per-qubit keys m0/m1 "
+        "collapse to one merged register, or a cirq -> qasm -> qiskit path swaps "
+        "the clbit slots); the number of classical bits is a hard check"
+    ),
+    LOSS_SYMBOLIC_PARAMS: (
+        "unbound (symbolic) parameters survive OpenQASM 3 (input float) and "
+        "CirqJSON, but OpenQASM 2 cannot represent them (export raises) and the "
+        "cirq OpenQASM importer cannot parse them; the parametrized circuit is "
+        "therefore only exercised on the QASM3 and CirqJSON edges"
     ),
 }
 
@@ -312,8 +413,57 @@ def loss_description(category: str) -> str:
     return _LOSS_DESCRIPTIONS.get(category, "")
 
 
+# Feature coverage: which of the circuit-level information axes the battery
+# actually exercises, and how. Surfaced by the conftest terminal summary as a
+# matrix so the report states what it does / does not verify.
+# Status: "round-trip tested" | "tested as unsupported" | "not exercised".
+CIRCUIT_FEATURE_COVERAGE = (
+    (
+        "qubit topology & naming",
+        "round-trip tested",
+        "named/grid Cirq qubits are preserved by CirqJSON but flattened to q[i] "
+        "by OpenQASM (declared 'qubit_topology'); Qiskit/CUDA-Q have no native "
+        "equivalent",
+    ),
+    (
+        "classical control flow (dynamic circuits)",
+        "not exercised",
+        "no dynamic reference circuits; Qiskit IfElseOp/WhileOp and QASM3 "
+        "control flow are outside the normalized gate set (would need new "
+        "builders and checks)",
+    ),
+    (
+        "circuit metadata & global phase",
+        "round-trip tested",
+        "Qiskit global_phase and metadata dict are dropped by every QASM round "
+        "trip (declared 'global_phase'/'circuit_metadata'); the unitary oracle "
+        "intentionally ignores phases",
+    ),
+    (
+        "symbolic parameters",
+        "tested as unsupported",
+        "QASM3 ('input float') and CirqJSON preserve unbound parameters; QASM2 "
+        "raises on unbound params and the cirq QASM importer cannot parse them, "
+        "so the parametrized circuit runs on the QASM3/CirqJSON edges only",
+    ),
+    (
+        "calibrations & pulse",
+        "not exercised",
+        "Qiskit Pulse calibrations and QASM3 defcal require converter-level "
+        "support; no reference circuit carries them",
+    ),
+    (
+        "measurement mapping & memory slots",
+        "round-trip tested",
+        "qubit->clbit assignment and Cirq measurement keys are compared "
+        "(declared 'measurement_mapping'); the classical-bit count is a hard "
+        "check",
+    ),
+)
+
+
 def check_operation_sequence(
-    actual: List[Tuple[str, Tuple[float, ...], Tuple[int, ...]]],
+    actual: List[Tuple[str, Tuple[Param, ...], Tuple[int, ...]]],
     expected_gates,
     atol: float = 1e-6,
 ) -> None:
@@ -368,6 +518,84 @@ def _resolve_serialization(result) -> str:
     return result
 
 
+# Circuit-level information checks (name, global phase, metadata, topology,
+# measurement mapping). Unlike the gate chain these are soft by design: any
+# deviation is recorded as the declared loss - OpenQASM genuinely cannot carry
+# them, so they are declared on the QASM/CUDA-Q edges and the report documents
+# exactly what a round trip drops. Only the classical-bit *count* is a hard
+# check (a conversion must never lose a measurement's storage).
+
+
+def _qiskit_measure_map(qc) -> Dict[int, int]:
+    """Measure statement as {qubit index -> classical-bit index}."""
+    mapping = {}
+    for instr in qc.data:
+        if instr.operation.name != "measure":
+            continue
+        qubit = qc.find_bit(instr.qubits[0]).index
+        clbit = qc.find_bit(instr.clbits[0]).index if instr.clbits else None
+        mapping[qubit] = clbit
+    return mapping
+
+
+def _expected_measure_keys(expected: ReferenceCircuit) -> Tuple[str, ...]:
+    """The measurement keys the canonical builders emit (``m<indices>``)."""
+    keys = sorted(
+        "m" + "".join(str(i) for i in indices)
+        for gate, _, indices in expected.gates
+        if gate == "measure"
+    )
+    return tuple(keys)
+
+
+def _check_qiskit_circuit_info(result, expected: ReferenceCircuit) -> None:
+    if expected.name and result.name != expected.name:
+        record_loss(
+            LOSS_CIRCUIT_NAME, detail=f"{expected.name!r} -> {result.name!r}"
+        )
+    phase = float(result.global_phase)
+    if abs(phase - expected.global_phase) > 1e-9:
+        record_loss(LOSS_GLOBAL_PHASE, detail=f"{expected.global_phase} -> {phase}")
+    if expected.metadata:
+        actual_meta = dict(result.metadata or {})
+        if actual_meta != dict(expected.metadata):
+            record_loss(
+                LOSS_CIRCUIT_METADATA, detail=f"{actual_meta} != {expected.metadata}"
+            )
+    measured = expected.measurement_indices()
+    if not measured:
+        return
+    # A conversion must preserve the classical storage: hard check.
+    assert result.num_clbits == len(measured), (result.num_clbits, len(measured))
+    mapping = _qiskit_measure_map(result)
+    expected_map = {i: i for i in measured}
+    if mapping != expected_map:
+        record_loss(
+            LOSS_MEASUREMENT_MAPPING,
+            detail=f"qubit->clbit {expected_map} -> {mapping}",
+        )
+
+
+def _check_cirq_circuit_info(result, expected: ReferenceCircuit) -> None:
+    if expected.qubit_scheme != "line":
+        labels = _cirq_topology(result)
+        expected_labels = expected.topology_labels()
+        if labels != expected_labels:
+            record_loss(
+                LOSS_QUBIT_TOPOLOGY,
+                detail=f"labels {expected_labels} -> {labels}",
+            )
+    if not expected.has_measurements():
+        return
+    keys = tuple(sorted(k.name for k in result.all_measurement_key_objs()))
+    expected_keys = _expected_measure_keys(expected)
+    if keys != expected_keys:
+        record_loss(
+            LOSS_MEASUREMENT_MAPPING,
+            detail=f"measurement keys {expected_keys} -> {keys}",
+        )
+
+
 def check_cirq(result, expected: Optional[ReferenceCircuit] = None) -> None:
     import cirq
 
@@ -380,12 +608,15 @@ def check_cirq(result, expected: Optional[ReferenceCircuit] = None) -> None:
             expected.n_qubits,
         )
         check_operation_sequence(_cirq_operations(result), expected.gates)
+        _check_cirq_circuit_info(result, expected)
 
 
 def check_qiskit(result, expected: Optional[ReferenceCircuit] = None) -> None:
     """Strict check for a *created* Qiskit circuit: qubit count and the full
-    operation sequence must match the reference specification. The circuit
-    name is not checked: QASM round trips regenerate it."""
+    operation sequence must match the reference specification, and the
+    circuit-level information (name/global phase/metadata/measure mapping) is
+    compared as recorded (declared) losses - QASM round trips are known to
+    regenerate the name and drop phase/metadata."""
     from qiskit import QuantumCircuit
 
     assert isinstance(
@@ -397,6 +628,7 @@ def check_qiskit(result, expected: Optional[ReferenceCircuit] = None) -> None:
             expected.n_qubits,
         )
         check_operation_sequence(_qiskit_operations(result), expected.gates)
+        _check_qiskit_circuit_info(result, expected)
 
 
 def check_cudaq(result, expected: Optional[ReferenceCircuit] = None) -> None:
@@ -487,9 +719,11 @@ def check_qasm_cudaq_documented(version: int) -> Callable:
 
 
 def check_cirq_light(result, expected: Optional[ReferenceCircuit] = None) -> None:
-    """Lenient cirq check: instance + declared qubit count only. Used on the
-    final SDK of the cudaq loops: the cudaq leg's structure is already
-    documented by ``check_qasm_cudaq_documented`` on the re-emitted QASM2."""
+    """Lenient cirq check: instance + declared qubit count + circuit-level
+    information. Used on the final SDK of the cudaq loops: the cudaq leg's
+    structure is already documented by ``check_qasm_cudaq_documented`` on the
+    re-emitted QASM2, so the op chain is not re-checked here, but the
+    circuit-level information losses still belong in the report."""
     import cirq
 
     assert isinstance(result, cirq.Circuit), f"expected cirq.Circuit, got {type(result)}"
@@ -498,11 +732,13 @@ def check_cirq_light(result, expected: Optional[ReferenceCircuit] = None) -> Non
             len(result.all_qubits()),
             expected.n_qubits,
         )
+        _check_cirq_circuit_info(result, expected)
 
 
 def check_qiskit_light(result, expected: Optional[ReferenceCircuit] = None) -> None:
-    """Lenient qiskit check: instance + declared qubit count only. Used on the
-    final SDK of the cudaq loops (see ``check_cirq_light``)."""
+    """Lenient qiskit check: instance + declared qubit count + circuit-level
+    information. Used on the final SDK of the cudaq loops (see
+    ``check_cirq_light``)."""
     from qiskit import QuantumCircuit
 
     assert isinstance(
@@ -513,6 +749,7 @@ def check_qiskit_light(result, expected: Optional[ReferenceCircuit] = None) -> N
             result.num_qubits,
             expected.n_qubits,
         )
+        _check_qiskit_circuit_info(result, expected)
 
 
 def check_cirq_json(result, expected: Optional[ReferenceCircuit] = None) -> None:
@@ -528,6 +765,7 @@ def check_cirq_json(result, expected: Optional[ReferenceCircuit] = None) -> None
             expected.n_qubits,
         )
         check_operation_sequence(_cirq_operations(circuit), expected.gates)
+        _check_cirq_circuit_info(circuit, expected)
 
 
 def _qasm_num_qubits(source: str, version: int) -> int:
@@ -665,16 +903,17 @@ def run_path(edge: ConversionEdge, circuit: ReferenceCircuit) -> Any:
             current, step.fn, expected=circuit, checks=step.checks, **step.kwargs
         )
 
-    if edge.oracle == "unitary":
+    oracle = circuit.oracle or edge.oracle
+    if oracle == "unitary":
         actual = _to_unitary(current)
         assert_unitaries_close(_cirq_unitary(circuit.cirq()), actual)
-    elif edge.oracle == "counts":
+    elif oracle == "counts":
         assert_counts(current, circuit)
-    elif edge.oracle == "structural":
+    elif oracle == "structural":
         # structural checks were already run by the steps
         pass
     else:
-        raise ValueError(f"unknown oracle: {edge.oracle}")
+        raise ValueError(f"unknown oracle: {oracle}")
     return current
 
 
@@ -815,7 +1054,7 @@ def build_edges(compression: Compression) -> Tuple[ConversionEdge, ...]:
         Serialization.QASM_V2,
         QuantumProgram.to_cirq_circuit,
         check_cirq,
-        known_losses=(LOSS_ROTATION_PRECISION,),
+        known_losses=_info_and(LOSS_ROTATION_PRECISION),
     )
     add(
         "cirq->qasm3->cirq",
@@ -824,7 +1063,7 @@ def build_edges(compression: Compression) -> Tuple[ConversionEdge, ...]:
         Serialization.QASM_V3,
         QuantumProgram.to_cirq_circuit,
         check_cirq,
-        known_losses=(LOSS_ROTATION_PRECISION,),
+        known_losses=_info_and(LOSS_ROTATION_PRECISION),
     )
     add(
         "cirq->cirqjson->cirq",
@@ -841,7 +1080,7 @@ def build_edges(compression: Compression) -> Tuple[ConversionEdge, ...]:
         Serialization.QASM_V2,
         QuantumProgram.to_qiskit_circuit,
         check_qiskit,
-        known_losses=(LOSS_ROTATION_PRECISION,),
+        known_losses=_info_and(LOSS_ROTATION_PRECISION),
     )
     add(
         "cirq->qasm3->qiskit",
@@ -850,7 +1089,7 @@ def build_edges(compression: Compression) -> Tuple[ConversionEdge, ...]:
         Serialization.QASM_V3,
         QuantumProgram.to_qiskit_circuit,
         check_qiskit,
-        known_losses=(LOSS_ROTATION_PRECISION,),
+        known_losses=_info_and(LOSS_ROTATION_PRECISION),
     )
     add(
         "cirq->qasm3->cudaq",
@@ -874,22 +1113,27 @@ def build_edges(compression: Compression) -> Tuple[ConversionEdge, ...]:
     )
     # cudaq round trips without execution: cudaq -> qasm2 -> {cirq, qiskit}
     # closes on the unitary oracle, so no simulation is needed to check for
-    # losses (see ``add_cudaq_loop``). Both declared losses are inherent to the
-    # cudaq leg: Cirq truncates rotation angles on write, and CUDA-Q rewrites
-    # the gate basis on re-emission.
+    # losses (see ``add_cudaq_loop``). The declared losses are inherent to the
+    # cudaq leg: Cirq truncates rotation angles on write, CUDA-Q rewrites the
+    # gate basis on re-emission, and the circuit-info losses come from both the
+    # QASM serializations and the per-qubit creg split.
     add_cudaq_loop(
         "cirq->qasm2->cudaq->qasm2",
         "cirq",
         producer,
         Serialization.QASM_V2,
-        known_losses=(LOSS_ROTATION_PRECISION, LOSS_CUDAQ_GATE_DECOMPOSITION),
+        known_losses=_info_and(
+            LOSS_ROTATION_PRECISION, LOSS_CUDAQ_GATE_DECOMPOSITION
+        ),
     )
     add_cudaq_loop(
         "cirq->qasm3->cudaq->qasm2",
         "cirq",
         producer,
         Serialization.QASM_V3,
-        known_losses=(LOSS_ROTATION_PRECISION, LOSS_CUDAQ_GATE_DECOMPOSITION),
+        known_losses=_info_and(
+            LOSS_ROTATION_PRECISION, LOSS_CUDAQ_GATE_DECOMPOSITION
+        ),
     )
 
     producer = QuantumProgram.from_qiskit_circuit
@@ -900,6 +1144,7 @@ def build_edges(compression: Compression) -> Tuple[ConversionEdge, ...]:
         Serialization.QASM_V2,
         QuantumProgram.to_qiskit_circuit,
         check_qiskit,
+        known_losses=_info_and(),
     )
     add(
         "qiskit->qasm3->qiskit",
@@ -908,6 +1153,7 @@ def build_edges(compression: Compression) -> Tuple[ConversionEdge, ...]:
         Serialization.QASM_V3,
         QuantumProgram.to_qiskit_circuit,
         check_qiskit,
+        known_losses=_info_and(),
     )
     add(
         "qiskit->qasm2->cirq",
@@ -916,6 +1162,7 @@ def build_edges(compression: Compression) -> Tuple[ConversionEdge, ...]:
         Serialization.QASM_V2,
         QuantumProgram.to_cirq_circuit,
         check_cirq,
+        known_losses=_info_and(),
     )
     add(
         "qiskit->qasm3->cirq",
@@ -924,6 +1171,7 @@ def build_edges(compression: Compression) -> Tuple[ConversionEdge, ...]:
         Serialization.QASM_V3,
         QuantumProgram.to_cirq_circuit,
         check_cirq,
+        known_losses=_info_and(),
     )
     add(
         "qiskit->qasm3->cudaq",
@@ -957,14 +1205,18 @@ def build_edges(compression: Compression) -> Tuple[ConversionEdge, ...]:
         "qiskit",
         producer,
         Serialization.QASM_V2,
-        known_losses=(LOSS_ROTATION_PRECISION, LOSS_CUDAQ_GATE_DECOMPOSITION),
+        known_losses=_info_and(
+            LOSS_ROTATION_PRECISION, LOSS_CUDAQ_GATE_DECOMPOSITION
+        ),
     )
     add_cudaq_loop(
         "qiskit->qasm3->cudaq->qasm2",
         "qiskit",
         producer,
         Serialization.QASM_V3,
-        known_losses=(LOSS_ROTATION_PRECISION, LOSS_CUDAQ_GATE_DECOMPOSITION),
+        known_losses=_info_and(
+            LOSS_ROTATION_PRECISION, LOSS_CUDAQ_GATE_DECOMPOSITION
+        ),
     )
 
     return tuple(edges)
@@ -997,6 +1249,10 @@ def _cirq_program(dest_format: Serialization) -> QuantumProgram:
     return QuantumProgram.from_cirq_circuit(_bell_cirq(), dest_format=dest_format)
 
 
+def _param_qiskit():
+    return get_reference_circuit("parametrized").qiskit()
+
+
 UNSUPPORTED_CONVERSIONS = (
     (
         "from_cirq_circuit -> QASM_V1",
@@ -1008,6 +1264,12 @@ UNSUPPORTED_CONVERSIONS = (
         "from_qiskit_circuit -> QASM_V1",
         lambda: QuantumProgram.from_qiskit_circuit(
             _bell_qiskit(), dest_format=Serialization.QASM_V1
+        ),
+    ),
+    (
+        "from_qiskit_circuit (unbound params) -> QASM_V2",
+        lambda: QuantumProgram.from_qiskit_circuit(
+            _param_qiskit(), dest_format=Serialization.QASM_V2
         ),
     ),
     (

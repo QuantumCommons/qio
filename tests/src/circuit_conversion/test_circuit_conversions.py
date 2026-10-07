@@ -33,12 +33,17 @@ from reference_circuits import REFERENCE_CIRCUITS
 COMPRESSIONS = (NONE, ZLIB)
 
 # Expand: edge x circuit x compression. CUDA-Q "counts" edges only support
-# deterministic circuits (they have known expected_counts).
+# deterministic circuits (they have known expected_counts). A circuit can also
+# restrict the edges it runs on (``supports_edge``) - e.g. symbolic-parameter
+# circuits only survive QASM3/CirqJSON - and can force its oracle.
 CIRCUIT_CONVERSIONS = []
 for compression in COMPRESSIONS:
     for edge in build_edges(compression):
         for circuit in REFERENCE_CIRCUITS:
-            if edge.oracle == "counts" and circuit.expected_counts is None:
+            if not circuit.supports_edge(edge.id):
+                continue
+            oracle = circuit.oracle or edge.oracle
+            if oracle == "counts" and circuit.expected_counts is None:
                 continue
             CIRCUIT_CONVERSIONS.append((edge, circuit, compression))
 

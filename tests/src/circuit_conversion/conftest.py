@@ -33,6 +33,15 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config) -> None:
         terminalreporter.write_line("  none")
         return
 
+    terminalreporter.write_line("\n  circuit feature coverage (axis | status | note):")
+    width = max(len(axis) for axis, _, _ in ct.CIRCUIT_FEATURE_COVERAGE)
+    for axis, status, note in ct.CIRCUIT_FEATURE_COVERAGE:
+        terminalreporter.write_line(f"    {axis:{width}s} | {status:19s} | {note}")
+
+    if not report:
+        terminalreporter.write_line("  conversion information losses: none declared/observed")
+        return
+
     categories = sorted({category for edges in report.values() for category in edges})
     terminalreporter.write_line("\n  loss categories & meaning:")
     for category in categories:

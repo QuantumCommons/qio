@@ -25,9 +25,14 @@ single/multi qubit, parameterized gates, and measurements.
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
-Operation = Tuple[str, Tuple[float, ...], Tuple[int, ...]]
+# Gate parameters are usually floats; a symbolic parameter is encoded as the
+# string marker "~<name>" so it flows through the op-chain comparison (see the
+# ``parametrized`` circuit and the ``_*_operations`` helpers in
+# ``circuit_testing``).
+Param = Union[float, str]
+Operation = Tuple[str, Tuple[Param, ...], Tuple[int, ...]]
 
 _SUPPORTED_GATES = {
     "h",
@@ -61,6 +66,9 @@ _TWO_QUBIT_GATES = {"cx", "cz"}
 
 
 def _fmt(num: float) -> str:
+    if isinstance(num, str):
+        # Symbolic parameter marker "~<name>": emit the bare name.
+        return num[1:] if num.startswith("~") else num
     return repr(float(num))
 
 
@@ -71,11 +79,58 @@ class ReferenceCircuit:
     gates: Sequence[Operation]
     expected_counts: Optional[Dict[str, int]] = None
     description: str = field(default="")
+    # Circuit-level information (see the conversion information-loss report):
+    # - global_phase / metadata are only representable by the Qiskit builder.
+    # - qubit_scheme selects the Cirq qubit type ("line" | "named" | "grid");
+    #   QASM flattens any scheme to a linear array, CirqJSON preserves it.
+    # - oracle forces which equivalence oracle the conversion path must close
+    #   with, overriding the edge's default (e.g. "structural" for circuits
+    #   whose unitary cannot be computed, like unbound-parameter circuits).
+    # - supported_edge_ids optionally restricts the edges this circuit runs on,
+    #   for features only a subset of formats can carry (symbolic parameters).
+    global_phase: float = field(default=0.0)
+    metadata: Optional[Dict[str, Any]] = field(default=None)
+    qubit_scheme: str = field(default="line")
+    oracle: Optional[str] = field(default=None)
+    supported_edge_ids: Optional[Tuple[str, ...]] = field(default=None)
+
+    def supports_edge(self, edge_id: str) -> bool:
+        if self.supported_edge_ids is not None:
+            return edge_id in self.supported_edge_ids
+        return True
+
+    def has_measurements(self) -> bool:
+        return any(gate == "measure" for gate, _, _ in self.gates)
+
+    def measurement_indices(self) -> List[int]:
+        """Sorted qubit indices that receive a measurement."""
+        return sorted(
+            {i for gate, _, indices in self.gates if gate == "measure" for i in indices}
+        )
+
+    def topology_labels(self) -> Tuple[str, ...]:
+        """Canonical (label, ...) the native Cirq builder produces for the
+        declared ``qubit_scheme`` - used to detect topology losses."""
+        if self.qubit_scheme == "line":
+            return tuple(f"q{i}" for i in range(self.n_qubits))
+        if self.qubit_scheme == "named":
+            return tuple(chr(ord("a") + i) for i in range(self.n_qubits))
+        if self.qubit_scheme == "grid":
+            return tuple(f"(0,{i})" for i in range(self.n_qubits))
+        raise ValueError(f"unknown qubit_scheme {self.qubit_scheme!r}")
 
     def _build_cirq(self) -> "cirq.Circuit":
         import cirq
 
-        qubits = cirq.LineQubit.range(self.n_qubits)
+        if self.qubit_scheme == "line":
+            qubits = cirq.LineQubit.range(self.n_qubits)
+        elif self.qubit_scheme == "named":
+            labels = self.topology_labels()
+            qubits = [cirq.NamedQubit(label) for label in labels]
+        elif self.qubit_scheme == "grid":
+            qubits = [cirq.GridQubit(0, i) for i in range(self.n_qubits)]
+        else:
+            raise ValueError(f"unknown qubit_scheme {self.qubit_scheme!r}")
         operations = []
         for gate, params, indices in self.gates:
             targets = [qubits[i] for i in indices]
@@ -87,7 +142,12 @@ class ReferenceCircuit:
                     cirq.measure(*targets, key="m" + "".join(str(i) for i in indices))
                 )
             elif gate in _PARAM_GATES:
-                operations.append(getattr(cirq, gate)(params[0]).on(*targets))
+                rads = params[0]
+                if isinstance(rads, str):
+                    import sympy
+
+                    rads = sympy.Symbol(rads[1:] if rads.startswith("~") else rads)
+                operations.append(getattr(cirq, gate)(rads).on(*targets))
             else:
                 gate_obj = {
                     "h": cirq.H,
@@ -111,13 +171,22 @@ class ReferenceCircuit:
         from qiskit import QuantumCircuit
 
         qc = QuantumCircuit(self.n_qubits, self.n_qubits, name=self.name)
+        if self.global_phase:
+            qc.global_phase = self.global_phase
+        if self.metadata:
+            qc.metadata = dict(self.metadata)
         for gate, params, indices in self.gates:
             targets = list(indices)
             if gate == "measure":
                 for i in indices:
                     qc.measure(i, i)
             elif gate in _PARAM_GATES:
-                getattr(qc, gate)(params[0], *targets)
+                param = params[0]
+                if isinstance(param, str):
+                    from qiskit.circuit import Parameter
+
+                    param = Parameter(param[1:] if param.startswith("~") else param)
+                getattr(qc, gate)(param, *targets)
             elif gate == "sdg":
                 qc.sdg(*targets)
             elif gate == "tdg":
@@ -180,7 +249,12 @@ class ReferenceCircuit:
                 for q in targets:
                     kernel.mz(q)
             elif gate in _PARAM_GATES:
-                getattr(kernel, gate)(params[0], *targets)
+                param = params[0]
+                if isinstance(param, str):
+                    raise NotImplementedError(
+                        "symbolic params are not representable in a CUDA-Q kernel"
+                    )
+                getattr(kernel, gate)(param, *targets)
             else:
                 getattr(kernel, gate)(*targets)
         return kernel
@@ -270,6 +344,57 @@ REFERENCE_CIRCUITS = [
             ("measure", (), (3,)),
         ),
         description="4-qubit circuit mixing single- and two-qubit gates.",
+    ),
+    ReferenceCircuit(
+        name="phased_meta",
+        n_qubits=2,
+        gates=_ops(
+            ("h", (), (0,)),
+            ("cx", (), (0, 1)),
+            ("z", (), (0,)),
+            ("measure", (), (0,)),
+            ("measure", (), (1,)),
+        ),
+        expected_counts={"00": None, "11": None},
+        global_phase=0.5,
+        metadata={"id": 42, "ansatz": "rx"},
+        description=(
+            "Deterministic circuit carrying non-trivial circuit-level "
+            "information: global_phase and a Qiskit metadata dict."
+        ),
+    ),
+    ReferenceCircuit(
+        name="topology",
+        n_qubits=2,
+        gates=_ops(
+            ("h", (), (0,)),
+            ("cx", (), (0, 1)),
+            ("measure", (), (0,)),
+            ("measure", (), (1,)),
+        ),
+        expected_counts={"00": None, "11": None},
+        qubit_scheme="named",
+        description=(
+            "Bell circuit on named qubits (a, b); the named topology is only "
+            "preserved by CirqJSON, QASM flattens it to a linear array."
+        ),
+    ),
+    ReferenceCircuit(
+        name="parametrized",
+        n_qubits=1,
+        gates=_ops(
+            ("rx", ("~theta",), (0,)),
+        ),
+        oracle="structural",
+        supported_edge_ids=(
+            "qiskit->qasm3->qiskit",
+            "cirq->cirqjson->cirq",
+        ),
+        description=(
+            "Unbound parameterized circuit rx(theta). Symbolic parameters only "
+            "survive QASM3 (input float) and CirqJSON; QASM2 raises on unbound "
+            "params and the cirq qasm importer cannot parse them."
+        ),
     ),
 ]
 
