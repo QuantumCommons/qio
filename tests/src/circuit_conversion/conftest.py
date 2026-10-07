@@ -36,4 +36,4 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config) -> None:
         terminalreporter.write_line("  none")
         return
     for edge_id, category, circuits in rows:
-        terminalreporter.write_line(f"  {edge_id:28s} {category:22s} {circuits}")
+        terminalreporter.write_line(f"  {edge_id:35s} {category:22s} {circuits}")

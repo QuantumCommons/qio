@@ -27,6 +27,14 @@ Design:
   ``rotation_precision`` loss tolerated on the paths serialized by Cirq
   (``cirq.to_qasm`` truncates rotation angles to ~10 significant digits, so
   exact floats are unreachable there).
+- **CUDA-Q round trips** : a CUDA-Q kernel cannot be introspected without
+  executing it, so the no-execution loops (``add_cudaq_loop``) only assert the
+  kernel exists and validate the information *around* the leg: the input
+  serialization exactly, then the end-of-chain SDK circuit by qubit count and
+  the ``unitary`` oracle (complete and correct). Exact operation-chain equality
+  is not asserted on the CUDA-Q output because CUDA-Q legitimately normalizes
+  the gate basis when re-emitting OpenQASM 2 (``cz -> h+cx+h``, ``s/t ->
+  rz/rx`` sequences, per-qubit classical registers).
 - **Information-loss policy** : each :class:`ConversionEdge` declares the
   losses inherent to its path (``known_losses``). The checks are exact-first:
   any loss category that is *not* declared fails the test (regression), a
@@ -47,7 +55,7 @@ Design:
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from qio.core import (
     QuantumProgram,
@@ -359,8 +367,11 @@ def check_qiskit(result, expected: Optional[ReferenceCircuit] = None) -> None:
 
 
 def check_cudaq(result, expected: Optional[ReferenceCircuit] = None) -> None:
-    # A CUDA-Q kernel cannot be introspected without executing it; the actual
-    # behavior is validated by the "counts" oracle.
+    # A CUDA-Q kernel cannot be introspected without executing it, so the
+    # kernel is only asserted to exist here. Its behavior is validated *around*
+    # the leg instead: by the "counts" oracle on the direct paths, or by the
+    # end-of-chain SDK circuit (qubit count + ``unitary`` oracle) on the
+    # no-execution round-trip loops (see ``add_cudaq_loop``).
     assert result is not None, "CUDA-Q kernel is None"
 
 
@@ -409,6 +420,52 @@ def check_qasm(version: int) -> Callable:
             check_operation_sequence(_qasm_operations(source, version), expected.gates)
 
     return _check
+
+
+def check_qasm_content_light(version: int) -> Callable:
+    """Lenient OpenQASM ``version`` content check: the source must parse and
+    declare the right qubit count, but the exact operation chain is *not*
+    compared. After a CUDA-Q leg CUDA-Q owns the gate decomposition when
+    re-emitting OpenQASM 2 (``cz -> h+cx+h``, ``s/t -> rz/rx`` sequences,
+    per-qubit classical registers), so structure is only verified semantically
+    at the end of the chain (unitary oracle)."""
+
+    def _check(result, expected: Optional[ReferenceCircuit] = None) -> None:
+        source = _resolve_serialization(result)
+        assert source, "empty QASM string"
+        num_qubits = _qasm_num_qubits(source, version)
+        if expected is not None:
+            assert num_qubits == expected.n_qubits, (num_qubits, expected.n_qubits)
+
+    return _check
+
+
+def check_cirq_light(result, expected: Optional[ReferenceCircuit] = None) -> None:
+    """Lenient cirq check: instance + declared qubit count only (see
+    ``check_qasm_content_light`` for why the op-chain is not compared)."""
+    import cirq
+
+    assert isinstance(result, cirq.Circuit), f"expected cirq.Circuit, got {type(result)}"
+    if expected is not None:
+        assert len(result.all_qubits()) == expected.n_qubits, (
+            len(result.all_qubits()),
+            expected.n_qubits,
+        )
+
+
+def check_qiskit_light(result, expected: Optional[ReferenceCircuit] = None) -> None:
+    """Lenient qiskit check: instance + declared qubit count only (see
+    ``check_qasm_content_light``)."""
+    from qiskit import QuantumCircuit
+
+    assert isinstance(
+        result, QuantumCircuit
+    ), f"expected QuantumCircuit, got {type(result)}"
+    if expected is not None:
+        assert result.num_qubits == expected.n_qubits, (
+            result.num_qubits,
+            expected.n_qubits,
+        )
 
 
 def check_cirq_json(result, expected: Optional[ReferenceCircuit] = None) -> None:
@@ -600,6 +657,23 @@ def build_edges(compression: Compression) -> Tuple[ConversionEdge, ...]:
     producer = QuantumProgram.from_cirq_circuit
     edges = []
 
+    def register(
+        edge_id: str,
+        input_kind: str,
+        steps: Sequence[Step],
+        oracle: str = "unitary",
+        known_losses: Tuple[str, ...] = (),
+    ) -> None:
+        edges.append(
+            ConversionEdge(
+                edge_id,
+                INPUT_FNS[input_kind],
+                tuple(steps),
+                oracle=oracle,
+                known_losses=known_losses,
+            )
+        )
+
     def add(
         edge_id: str,
         input_kind: str,
@@ -620,15 +694,73 @@ def build_edges(compression: Compression) -> Tuple[ConversionEdge, ...]:
         ]
         if read_fn is not None:
             steps.append(Step(read_fn, {}, (read_check,)))
-        edges.append(
-            ConversionEdge(
-                edge_id,
-                INPUT_FNS[input_kind],
-                tuple(steps),
-                oracle=oracle,
+        register(edge_id, input_kind, steps, oracle, known_losses)
+
+    def add_cudaq_loop(
+        edge_id_base: str,
+        input_kind: str,
+        write_fn: Callable,
+        write_fmt: Serialization,
+        known_losses: Tuple[str, ...] = (),
+    ) -> None:
+        """Registers a no-execution cudaq round trip back to each SDK:
+        ``input -> qasm(write_fmt) -> cudaq kernel -> qasm2 -> {cirq, qiskit}``.
+
+        A CUDA-Q kernel cannot be introspected without executing it
+        (``check_cudaq`` stays a mere existence check), so the information is
+        verified *around* the leg: the input serialization is checked exactly
+        (``write_checks``, before CUDA-Q sees it), then the end-of-chain SDK
+        circuit is only required to declare the right qubit count (complete)
+        and to reproduce the reference unitary (correct, via the ``unitary``
+        oracle). Exact operation-chain equality is deliberately *not* asserted
+        on the CUDA-Q output: CUDA-Q normalizes the gate basis when re-emitting
+        OpenQASM 2 (``cz -> h+cx+h``, ``s/t -> rz/rx`` sequences, per-qubit
+        classical registers), so a strict structural match would flag a
+        legitimate rewrite as a regression instead of the semantic loss we are
+        after.
+        """
+        write_checks = (check_program(write_fmt),) + _format_content_checks(write_fmt)
+        back_checks = (
+            check_program(Serialization.QASM_V2),
+            check_qasm_content_light(2),
+        )
+        terminal_converters = {
+            "cirq": QuantumProgram.to_cirq_circuit,
+            "qiskit": QuantumProgram.to_qiskit_circuit,
+        }
+        terminal_checks = {
+            "cirq": check_cirq_light,
+            "qiskit": check_qiskit_light,
+        }
+        for terminal in ("cirq", "qiskit"):
+            steps = [
+                Step(
+                    write_fn,
+                    {"dest_format": write_fmt, "compression_format": compression},
+                    write_checks,
+                ),
+                Step(QuantumProgram.to_cudaq_kernel, {}, (check_cudaq,)),
+                Step(
+                    QuantumProgram.from_cudaq_kernel,
+                    {
+                        "dest_format": Serialization.QASM_V2,
+                        "compression_format": compression,
+                    },
+                    back_checks,
+                ),
+                Step(
+                    terminal_converters[terminal],
+                    {},
+                    (terminal_checks[terminal],),
+                ),
+            ]
+            register(
+                f"{edge_id_base}->{terminal}",
+                input_kind,
+                steps,
+                oracle="unitary",
                 known_losses=known_losses,
             )
-        )
 
     add(
         "cirq->qasm2->cirq",
@@ -694,6 +826,23 @@ def build_edges(compression: Compression) -> Tuple[ConversionEdge, ...]:
         oracle="structural",
         known_losses=(LOSS_ROTATION_PRECISION,),
     )
+    # cudaq round trips without execution: cudaq -> qasm2 -> {cirq, qiskit}
+    # closes on the unitary oracle, so no simulation is needed to check for
+    # losses (see ``add_cudaq_loop``).
+    add_cudaq_loop(
+        "cirq->qasm2->cudaq->qasm2",
+        "cirq",
+        producer,
+        Serialization.QASM_V2,
+        known_losses=(LOSS_ROTATION_PRECISION,),
+    )
+    add_cudaq_loop(
+        "cirq->qasm3->cudaq->qasm2",
+        "cirq",
+        producer,
+        Serialization.QASM_V3,
+        known_losses=(LOSS_ROTATION_PRECISION,),
+    )
 
     producer = QuantumProgram.from_qiskit_circuit
     add(
@@ -754,6 +903,18 @@ def build_edges(compression: Compression) -> Tuple[ConversionEdge, ...]:
         QuantumProgram.to_mimiq_circuit,
         check_mimiq,
         oracle="structural",
+    )
+    add_cudaq_loop(
+        "qiskit->qasm2->cudaq->qasm2",
+        "qiskit",
+        producer,
+        Serialization.QASM_V2,
+    )
+    add_cudaq_loop(
+        "qiskit->qasm3->cudaq->qasm2",
+        "qiskit",
+        producer,
+        Serialization.QASM_V3,
     )
 
     return tuple(edges)
