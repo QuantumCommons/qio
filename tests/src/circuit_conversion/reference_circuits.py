@@ -80,7 +80,12 @@ class ReferenceCircuit:
         for gate, params, indices in self.gates:
             targets = [qubits[i] for i in indices]
             if gate == "measure":
-                operations.append(cirq.measure(*targets, key="result"))
+                # Distinct key per measurement so Cirq exports them to
+                # distinct classical registers (a shared key collapses the
+                # round trip: cirq writes every measurement to one bit).
+                operations.append(
+                    cirq.measure(*targets, key="m" + "".join(str(i) for i in indices))
+                )
             elif gate in _PARAM_GATES:
                 operations.append(getattr(cirq, gate)(params[0]).on(*targets))
             else:

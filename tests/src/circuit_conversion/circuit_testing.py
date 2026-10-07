@@ -17,12 +17,29 @@ Design:
 - **One format checker per SDK / per serialization format** : ``check_cirq``,
   ``check_qiskit``, ``check_cudaq``, ``check_mimiq``, ``check_program``,
   ``check_qasm``, ``check_cirq_json``. Each validates the format of the object
-  and that the expected known information (``spec``, a :class:`ReferenceCircuit`)
-  holds.
+  and that its operation chain matches the reference specification
+  (``expected.gates``, a :class:`ReferenceCircuit`).
+- **Operation-chain verification** : every intermediate (``QuantumProgram``
+  QASM2/QASM3/CirqJSON content) and final SDK circuit is normalized to the
+  canonical ``(gate, params, qubit_indices)`` form and compared against
+  ``expected.gates``. Gate names, qubit indices and the measurement multiset
+  are compared exactly; rotation parameters are compared exactly, with the
+  ``rotation_precision`` loss tolerated on the paths serialized by Cirq
+  (``cirq.to_qasm`` truncates rotation angles to ~10 significant digits, so
+  exact floats are unreachable there).
+- **Information-loss policy** : each :class:`ConversionEdge` declares the
+  losses inherent to its path (``known_losses``). The checks are exact-first:
+  any loss category that is *not* declared fails the test (regression), a
+  declared one is tolerated and recorded. ``loss_report()`` + the
+  ``conftest.py`` terminal summary surface the observed losses at the end of
+  the session.
+- **Input circuits are NOT checked** : they are built statically and trusted
+  (``ReferenceCircuit`` builders), so ``run_path`` converts them without any
+  verification; only intermediate and final objects are checked.
 - **Generic driver** : ``convert(circuit, converter, ...)`` takes the input
   circuit and the conversion function to call as an argument, and runs the
-  verifications (before: format of the input; after: output checks). It is
-  composed into multi-step pipelines by ``run_path``.
+  post-conversion checks. It is composed into multi-step pipelines by
+  ``run_path``.
 - **Declarative registries** : ``build_edges()`` returns the full conversion
   graph (SDK -> format -> SDK) as :class:`ConversionEdge` rows; adding a
   conversion is adding one call. ``UNSUPPORTED_CONVERSIONS`` hosts the negative
@@ -30,7 +47,7 @@ Design:
 """
 
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from qio.core import (
     QuantumProgram,
@@ -49,6 +66,267 @@ ZLIB = Compression.ZLIB_BASE64_V1
 # check format (one per SDK / serialization format)
 
 
+# Operation-chain normalization + comparison.
+#
+# Every checked object (intermediate content or final SDK circuit) is reduced
+# to the canonical ``Operation = (gate_name, params, qubit_indices)`` form and
+# compared against the reference specification (``expected.gates``).
+
+
+def _cirq_qubit_index(qubit: Any) -> int:
+    import re
+
+    import cirq
+
+    if isinstance(qubit, cirq.LineQubit):
+        return qubit.x
+    name = str(getattr(qubit, "name", qubit))
+    match = re.search(r"(\d+)$", name)
+    if match is None:
+        raise AssertionError(f"cannot derive a qubit index from {qubit!r}")
+    return int(match.group(1))
+
+
+# Reversed reference mapping: cirq gate class (or ZPowGate exponent) -> name.
+_ROTATION_GATES = ("rx", "ry", "rz")
+
+_CIRQ_GATE_NAMES = {
+    "HPowGate": "h",
+    "_PauliX": "x",
+    "_PauliY": "y",
+    "_PauliZ": "z",
+    "CXPowGate": "cx",
+    "CZPowGate": "cz",
+    "Rx": "rx",
+    "Ry": "ry",
+    "Rz": "rz",
+}
+
+
+def _zpow_exponent_name(exponent: float) -> str:
+    for name, expect in (("s", 0.5), ("sdg", -0.5), ("t", 0.25), ("tdg", -0.25)):
+        if abs(exponent - expect) < 1e-12:
+            return name
+    return "z"
+
+
+def _cirq_gate_params(gate: Any) -> Tuple[float, ...]:
+    import math
+
+    name = type(gate).__name__
+    if name in ("Rx", "Ry", "Rz"):
+        rads = getattr(gate, "_rads", None)
+        return (rads if rads is not None else float(gate.exponent) * math.pi,)
+    return ()
+
+
+def _cirq_gate_name(gate: Any) -> str:
+    name = type(gate).__name__
+    if name == "ZPowGate":
+        return _zpow_exponent_name(gate.exponent)
+    if name not in _CIRQ_GATE_NAMES:
+        raise AssertionError(f"unmapped cirq gate {name!r}")
+    return _CIRQ_GATE_NAMES[name]
+
+
+def _cirq_operations(circuit) -> List[Tuple[str, Tuple[float, ...], Tuple[int, ...]]]:
+    import cirq
+
+    ops = []
+    for op in circuit.all_operations():
+        indices = tuple(_cirq_qubit_index(q) for q in op.qubits)
+        if isinstance(op.gate, cirq.MeasurementGate):
+            # Split multi-qubit measurements into one canonical "measure" op
+            # per qubit so merged terminal measurements match the reference.
+            ops.extend(("measure", (), (i,)) for i in indices)
+            continue
+        ops.append((_cirq_gate_name(op.gate), _cirq_gate_params(op.gate), indices))
+    return ops
+
+
+def _qiskit_operations(qc) -> List[Tuple[str, Tuple[float, ...], Tuple[int, ...]]]:
+    ops = []
+    for instr in qc.data:
+        operation = instr.operation
+        indices = tuple(qc.find_bit(q).index for q in instr.qubits)
+        if operation.name == "measure":
+            ops.append(("measure", (), indices))
+        else:
+            params = tuple(float(p) for p in operation.params)
+            ops.append((operation.name, params, indices))
+    return ops
+
+
+_MIMIQ_GATE_NAMES = {
+    "GateH": "h",
+    "GateX": "x",
+    "GateY": "y",
+    "GateZ": "z",
+    "GateS": "s",
+    "GateSDG": "sdg",
+    "GateT": "t",
+    "GateTDG": "tdg",
+    "GateRX": "rx",
+    "GateRY": "ry",
+    "GateRZ": "rz",
+    "GateCX": "cx",
+    "GateCZ": "cz",
+    "Measure": "measure",
+}
+
+
+def _mimiq_operations(circuit) -> List[Tuple[str, Tuple[float, ...], Tuple[int, ...]]]:
+    ops = []
+    for instr in circuit.instructions:
+        gate = instr.operation
+        name = type(gate).__name__
+        if name not in _MIMIQ_GATE_NAMES:
+            raise AssertionError(f"unmapped mimiq gate {name!r}")
+        name = _MIMIQ_GATE_NAMES[name]
+        indices = tuple(int(q) for q in instr.get_qubits())
+        if name == "measure":
+            ops.append(("measure", (), indices))
+        else:
+            params = (
+                tuple(float(p) for p in gate.getparams())
+                if name in _ROTATION_GATES
+                else ()
+            )
+            ops.append((name, params, indices))
+    return ops
+
+
+def _qasm_operations(
+    source: str, version: int
+) -> List[Tuple[str, Tuple[float, ...], Tuple[int, ...]]]:
+    # Independent parsers (Qiskit's own), not the qio converters under test.
+    from qiskit import qasm2, qasm3
+
+    qc = qasm2.loads(source) if version == 2 else qasm3.loads(source)
+    return _qiskit_operations(qc)
+
+
+def _cirqjson_operations(
+    source: str,
+) -> List[Tuple[str, Tuple[float, ...], Tuple[int, ...]]]:
+    import cirq
+
+    return _cirq_operations(cirq.read_json(json_text=source))
+
+
+def _params_close(
+    a: Tuple[float, ...], b: Tuple[float, ...], atol: float = 1e-6
+) -> bool:
+    import math
+
+    if len(a) != len(b):
+        return False
+    # Exact equality short-circuits; isclose covers the ~10-digit rounding
+    # introduced by ``cirq.to_qasm`` when it serializes rotation angles.
+    return all(
+        x == y or math.isclose(x, y, rel_tol=atol, abs_tol=atol) for x, y in zip(a, b)
+    )
+
+
+# Information-loss tracking (objectives: highlight inherent conversion losses,
+# catch undeclared ones as regressions).
+#
+# Each ConversionEdge declares the losses inherent to its path
+# (``known_losses``). Every check is exact-first: any deviation is classified
+# into a loss category; a category that is not declared on the current edge
+# fails the test (regression), a declared one is tolerated and recorded in the
+# session report (``loss_report()``).
+#
+# Categories:
+# - ``rotation_precision``: Cirq's QASM export truncates rotation angles to
+#   ~10 significant digits (``rx(pi*0.0954929659)``), so rotation parameters
+#   are not bit-exact after any round trip serialized by Cirq. The gate name,
+#   qubit indices and measurement structure still match exactly.
+#
+# Single-qubit terminal measurements are compared as a *multiset*: they
+# commute and Cirq packs them into a shared moment (then orders them by qubit
+# index), so their ordering carries no information and is not tracked as a
+# loss. Any missing or extra measurement is a hard failure.
+
+LOSS_ROTATION_PRECISION = "rotation_precision"
+
+_LOSS_REPORT: Dict[str, Dict[str, set]] = {}
+_LOSS_CTX = {"id": None, "circuit": None, "known": frozenset()}
+
+
+def record_loss(category: str) -> None:
+    """Records a declared information loss, or fails an undeclared one."""
+    if category not in _LOSS_CTX["known"]:
+        raise AssertionError(
+            f"undeclared information loss {category!r} on edge "
+            f"{_LOSS_CTX['id']!r} (circuit {_LOSS_CTX['circuit']!r}); declare it "
+            "in the edge's known_losses or fix the converter"
+        )
+    _LOSS_REPORT.setdefault(_LOSS_CTX["id"], {}).setdefault(category, set()).add(
+        _LOSS_CTX["circuit"]
+    )
+
+
+def set_loss_context(edge: "ConversionEdge", circuit: ReferenceCircuit) -> None:
+    _LOSS_CTX["id"] = edge.id
+    _LOSS_CTX["circuit"] = circuit.name
+    _LOSS_CTX["known"] = frozenset(edge.known_losses)
+
+
+def loss_report() -> Dict[str, Dict[str, set]]:
+    """Session report: edge id -> {loss category: set of affected circuits}."""
+    return _LOSS_REPORT
+
+
+def check_operation_sequence(
+    actual: List[Tuple[str, Tuple[float, ...], Tuple[int, ...]]],
+    expected_gates,
+    atol: float = 1e-6,
+) -> None:
+    """Exact-first operation-chain check against the reference gate list.
+
+    The gate chain (non-measurement operations) must match in order: names and
+    qubit indices exactly, rotation parameters exactly - a parameter deviation
+    that stays within ``atol`` is the ``rotation_precision`` loss (declare it
+    on edges serialized by Cirq), anything larger is a bug. ``measure`` ops
+    must form exactly the same multiset (commuting terminal measures, order
+    carries no information): any missing/extra measurement is a bug.
+    """
+    gate_actual = [op for op in actual if op[0] != "measure"]
+    gate_expected = [op for op in expected_gates if op[0] != "measure"]
+    assert len(gate_actual) == len(gate_expected), (
+        len(gate_actual),
+        len(gate_expected),
+    )
+    for (name_a, params_a, indices_a), (name_b, params_b, indices_b) in zip(
+        gate_actual, gate_expected
+    ):
+        assert name_a == name_b, (name_a, name_b)
+        assert indices_a == indices_b, (indices_a, indices_b)
+        if params_a != params_b:
+            assert _params_close(params_a, params_b, atol), (
+                f"rotation parameters differ beyond tolerance: "
+                f"{params_a} vs {params_b}"
+            )
+            record_loss(LOSS_ROTATION_PRECISION)
+
+    measure_actual = sorted(op for op in actual if op[0] == "measure")
+    measure_expected = sorted(op for op in expected_gates if op[0] == "measure")
+    assert measure_actual == measure_expected, (measure_actual, measure_expected)
+
+
+def _resolve_serialization(result) -> str:
+    """Uncompresses a QuantumProgram serialization when needed."""
+    if isinstance(result, QuantumProgram):
+        source = result.serialization
+        if result.compression_format == ZLIB:
+            from qio.utils.compression import zlib_to_str
+
+            source = zlib_to_str(source)
+        return source
+    return result
+
+
 def check_cirq(result, expected: Optional[ReferenceCircuit] = None) -> None:
     import cirq
 
@@ -60,25 +338,13 @@ def check_cirq(result, expected: Optional[ReferenceCircuit] = None) -> None:
             len(result.all_qubits()),
             expected.n_qubits,
         )
-
-
-def _qiskit_operations(qc) -> List[Tuple[str, Tuple[int, ...]]]:
-    """Normalizes a Qiskit circuit to (gate_name, qubit_indices) operations."""
-    return [
-        (instruction.name, tuple(qubit.index for qubit in qargs))
-        for instruction, qargs, _ in qc.data
-    ]
-
-
-def _expected_qiskit_operations(
-    expected: ReferenceCircuit,
-) -> List[Tuple[str, Tuple[int, ...]]]:
-    return [(gate, tuple(indices)) for gate, _params, indices in expected.gates]
+        check_operation_sequence(_cirq_operations(result), expected.gates)
 
 
 def check_qiskit(result, expected: Optional[ReferenceCircuit] = None) -> None:
-    """Strict check for a *created* Qiskit circuit: name, qubit count and the
-    full operation sequence must match the reference specification."""
+    """Strict check for a *created* Qiskit circuit: qubit count and the full
+    operation sequence must match the reference specification. The circuit
+    name is not checked: QASM round trips regenerate it."""
     from qiskit import QuantumCircuit
 
     assert isinstance(
@@ -89,9 +355,7 @@ def check_qiskit(result, expected: Optional[ReferenceCircuit] = None) -> None:
             result.num_qubits,
             expected.n_qubits,
         )
-        assert result.name == expected.name, (result.name, expected.name)
-        actual = _qiskit_operations(result)
-        assert actual == _expected_qiskit_operations(expected), (actual, expected.gates)
+        check_operation_sequence(_qiskit_operations(result), expected.gates)
 
 
 def check_cudaq(result, expected: Optional[ReferenceCircuit] = None) -> None:
@@ -112,6 +376,8 @@ def check_mimiq(result, expected: Optional[ReferenceCircuit] = None) -> None:
         num_qubits = num_qubits()
     if expected is not None and num_qubits is not None:
         assert num_qubits == expected.n_qubits, (num_qubits, expected.n_qubits)
+    if expected is not None:
+        check_operation_sequence(_mimiq_operations(result), expected.gates)
 
 
 def check_program(serialization_format: Serialization) -> Callable:
@@ -131,15 +397,16 @@ def check_program(serialization_format: Serialization) -> Callable:
 
 def check_qasm(version: int) -> Callable:
     """Validates the serialized OpenQASM ``version`` (2 or 3) content: it must
-    parse and, when an expected circuit is provided, declare the right qubit
-    count."""
+    parse, declare the right qubit count and reproduce the reference operation
+    chain."""
 
     def _check(result, expected: Optional[ReferenceCircuit] = None) -> None:
-        source = result.serialization if isinstance(result, QuantumProgram) else result
+        source = _resolve_serialization(result)
         assert source, "empty QASM string"
         num_qubits = _qasm_num_qubits(source, version)
         if expected is not None:
             assert num_qubits == expected.n_qubits, (num_qubits, expected.n_qubits)
+            check_operation_sequence(_qasm_operations(source, version), expected.gates)
 
     return _check
 
@@ -147,7 +414,7 @@ def check_qasm(version: int) -> Callable:
 def check_cirq_json(result, expected: Optional[ReferenceCircuit] = None) -> None:
     import cirq
 
-    source = result.serialization if isinstance(result, QuantumProgram) else result
+    source = _resolve_serialization(result)
     assert source, "empty Cirq JSON"
     circuit = cirq.read_json(json_text=source)
     assert isinstance(circuit, cirq.Circuit), type(circuit)
@@ -156,6 +423,7 @@ def check_cirq_json(result, expected: Optional[ReferenceCircuit] = None) -> None
             len(circuit.all_qubits()),
             expected.n_qubits,
         )
+        check_operation_sequence(_cirq_operations(circuit), expected.gates)
 
 
 def _qasm_num_qubits(source: str, version: int) -> int:
@@ -265,13 +533,14 @@ class ConversionEdge:
     input_fn: Callable[[ReferenceCircuit], Any]
     steps: Tuple[Step, ...]
     oracle: str = "unitary"  # "unitary" | "counts" | "structural"
+    known_losses: Tuple[str, ...] = ()  # inherent information losses of the path
 
 
 def convert(circuit, converter, *args, checks=(), expected=None, **kwargs) -> Any:
     """Generic conversion driver.
 
     Args:
-        circuit: the input circuit (format checked upfront).
+        circuit: the input circuit (statically built and trusted - not checked).
         converter: the conversion function to call (e.g. ``QuantumProgram.from_*_circuit``).
         checks: post-conversion verifications, each ``check(result, expected)``.
         expected: known information (a ReferenceCircuit) checks are validated against.
@@ -285,6 +554,7 @@ def convert(circuit, converter, *args, checks=(), expected=None, **kwargs) -> An
 
 def run_path(edge: ConversionEdge, circuit: ReferenceCircuit) -> Any:
     """Runs a full conversion path (input -> steps) and applies its oracle."""
+    set_loss_context(edge, circuit)
     current = edge.input_fn(circuit)
     for step in edge.steps:
         current = convert(
@@ -324,8 +594,9 @@ INPUT_FNS = {
 
 
 def build_edges(compression: Compression) -> Tuple[ConversionEdge, ...]:
-    """Builds the conversion graph (SDK -> format -> SDK) for one compression."""
-    content_checks_ok = compression == NONE
+    """Builds the conversion graph (SDK -> format -> SDK) for one compression.
+    Intermediate content checks are performed for both ``NONE`` and ``ZLIB``
+    (the serialization is decompressed before parsing)."""
     producer = QuantumProgram.from_cirq_circuit
     edges = []
 
@@ -337,10 +608,9 @@ def build_edges(compression: Compression) -> Tuple[ConversionEdge, ...]:
         read_fn: Optional[Callable] = None,
         read_check: Optional[Callable] = None,
         oracle: str = "unitary",
+        known_losses: Tuple[str, ...] = (),
     ) -> None:
-        checks = (check_program(fmt),) + (
-            _format_content_checks(fmt) if content_checks_ok else ()
-        )
+        checks = (check_program(fmt),) + _format_content_checks(fmt)
         steps = [
             Step(
                 write_fn,
@@ -351,7 +621,13 @@ def build_edges(compression: Compression) -> Tuple[ConversionEdge, ...]:
         if read_fn is not None:
             steps.append(Step(read_fn, {}, (read_check,)))
         edges.append(
-            ConversionEdge(edge_id, _INPUT_FNS[input_kind], tuple(steps), oracle=oracle)
+            ConversionEdge(
+                edge_id,
+                INPUT_FNS[input_kind],
+                tuple(steps),
+                oracle=oracle,
+                known_losses=known_losses,
+            )
         )
 
     add(
@@ -361,6 +637,7 @@ def build_edges(compression: Compression) -> Tuple[ConversionEdge, ...]:
         Serialization.QASM_V2,
         QuantumProgram.to_cirq_circuit,
         check_cirq,
+        known_losses=(LOSS_ROTATION_PRECISION,),
     )
     add(
         "cirq->qasm3->cirq",
@@ -369,6 +646,7 @@ def build_edges(compression: Compression) -> Tuple[ConversionEdge, ...]:
         Serialization.QASM_V3,
         QuantumProgram.to_cirq_circuit,
         check_cirq,
+        known_losses=(LOSS_ROTATION_PRECISION,),
     )
     add(
         "cirq->cirqjson->cirq",
@@ -385,6 +663,7 @@ def build_edges(compression: Compression) -> Tuple[ConversionEdge, ...]:
         Serialization.QASM_V2,
         QuantumProgram.to_qiskit_circuit,
         check_qiskit,
+        known_losses=(LOSS_ROTATION_PRECISION,),
     )
     add(
         "cirq->qasm3->qiskit",
@@ -393,6 +672,7 @@ def build_edges(compression: Compression) -> Tuple[ConversionEdge, ...]:
         Serialization.QASM_V3,
         QuantumProgram.to_qiskit_circuit,
         check_qiskit,
+        known_losses=(LOSS_ROTATION_PRECISION,),
     )
     add(
         "cirq->qasm3->cudaq",
@@ -402,6 +682,7 @@ def build_edges(compression: Compression) -> Tuple[ConversionEdge, ...]:
         QuantumProgram.to_cudaq_kernel,
         check_cudaq,
         oracle="counts",
+        known_losses=(LOSS_ROTATION_PRECISION,),
     )
     add(
         "cirq->qasm2->mimiq",
@@ -411,6 +692,7 @@ def build_edges(compression: Compression) -> Tuple[ConversionEdge, ...]:
         QuantumProgram.to_mimiq_circuit,
         check_mimiq,
         oracle="structural",
+        known_losses=(LOSS_ROTATION_PRECISION,),
     )
 
     producer = QuantumProgram.from_qiskit_circuit
