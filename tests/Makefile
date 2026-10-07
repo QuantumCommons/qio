@@ -13,3 +13,7 @@ test:
 .PHONY: test-circuit-conv
 test-circuit-conv:
 	pytest -s --showprogress -vv src/circuit_conversion/
+
+.PHONY: test-result-conv
+test-result-conv:
+	pytest -s --showprogress -vv src/result_conversion/
