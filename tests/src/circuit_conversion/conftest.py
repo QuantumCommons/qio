@@ -14,7 +14,9 @@
 """Session hooks for the circuit conversion battery.
 
 ``pytest_terminal_summary`` prints the information losses observed during the
-run (the ones declared as inherent to each conversion path). This makes the
+run (the ones declared as inherent to each conversion path). For each observed
+loss it explains the category (``loss_description``) and lists the affected
+circuits with the concrete deviation recorded as detail. This makes the
 conversion losses explicit in the output instead of being silently tolerated.
 """
 
@@ -26,14 +28,27 @@ import circuit_testing as ct
 @pytest.hookimpl(trylast=True)
 def pytest_terminal_summary(terminalreporter, exitstatus, config) -> None:
     report = ct.loss_report()
-    rows = [
-        (edge_id, category, ", ".join(sorted(circuits)))
-        for edge_id, categories in sorted(report.items())
-        for category, circuits in sorted(categories.items())
-    ]
     terminalreporter.section("conversion information losses observed (declared & inherent)")
-    if not rows:
+    if not report:
         terminalreporter.write_line("  none")
         return
-    for edge_id, category, circuits in rows:
-        terminalreporter.write_line(f"  {edge_id:35s} {category:22s} {circuits}")
+
+    categories = sorted({category for edges in report.values() for category in edges})
+    terminalreporter.write_line("\n  loss categories & meaning:")
+    for category in categories:
+        terminalreporter.write_line(f"    - {category:28s}")
+        terminalreporter.write_line(f"{ct.loss_description(category)}")
+
+    terminalreporter.write_line("\n  observations (edge | category | affected circuits):")
+    for edge_id, categories_map in sorted(report.items()):
+        first = True
+        for category, entry in sorted(categories_map.items()):
+            circuits = ", ".join(sorted(entry["circuits"]))
+            if first:
+                terminalreporter.write_line(f"    {edge_id:35s} {category:28s} {circuits}")
+                first = False
+            else:
+                terminalreporter.write_line(f"    {'':35s} {category:28s} {circuits}")
+            for circuit, detail in sorted(entry["observations"]):
+                suffix = f' : "{detail}"' if detail else ""
+                terminalreporter.write_line(f"      - {circuit}{suffix}")

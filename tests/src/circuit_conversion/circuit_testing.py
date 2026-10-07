@@ -30,11 +30,13 @@ Design:
 - **CUDA-Q round trips** : a CUDA-Q kernel cannot be introspected without
   executing it, so the no-execution loops (``add_cudaq_loop``) only assert the
   kernel exists and validate the information *around* the leg: the input
-  serialization exactly, then the end-of-chain SDK circuit by qubit count and
-  the ``unitary`` oracle (complete and correct). Exact operation-chain equality
-  is not asserted on the CUDA-Q output because CUDA-Q legitimately normalizes
-  the gate basis when re-emitting OpenQASM 2 (``cz -> h+cx+h``, ``s/t ->
-  rz/rx`` sequences, per-qubit classical registers).
+  serialization exactly, then the re-emitted QASM2. Exact operation-chain
+  equality is not asserted on the CUDA-Q output as a hard failure because
+  CUDA-Q legitimately normalizes the gate basis when re-emitting OpenQASM 2
+  (``cz -> h+cx+h``, ``s/t -> rz/rx`` sequences, per-qubit classical
+  registers); instead any such deviation is *recorded* in the loss report as
+  the declared ``cudaq_gate_decomposition`` loss, and the final SDK circuit is
+  checked for qubit count (complete) + the ``unitary`` oracle (correct).
 - **Information-loss policy** : each :class:`ConversionEdge` declares the
   losses inherent to its path (``known_losses``). The checks are exact-first:
   any loss category that is *not* declared fails the test (regression), a
@@ -257,22 +259,41 @@ def _params_close(
 # loss. Any missing or extra measurement is a hard failure.
 
 LOSS_ROTATION_PRECISION = "rotation_precision"
+LOSS_CUDAQ_GATE_DECOMPOSITION = "cudaq_gate_decomposition"
 
-_LOSS_REPORT: Dict[str, Dict[str, set]] = {}
+_LOSS_DESCRIPTIONS = {
+    LOSS_ROTATION_PRECISION: (
+        "rotation angles are serialized by Cirq's QASM export at ~10 significant "
+        "digits, so exact floats are unreachable after a Cirq-serialized round "
+        "trip; gate names, qubit indices and measurement structure still match"
+    ),
+    LOSS_CUDAQ_GATE_DECOMPOSITION: (
+        "CUDA-Q re-emits OpenQASM 2 in a different gate basis (e.g. cz -> h+cx+h, "
+        "s/t -> rz/rx) and splits measurements into per-qubit classical "
+        "registers; the qubit count is preserved and the end-of-chain unitary is "
+        "checked by the unitary oracle, so this is a structural - not semantic - "
+        "rewrite"
+    ),
+}
+
+_LOSS_REPORT: Dict[str, Dict[str, Dict[str, Any]]] = {}
 _LOSS_CTX = {"id": None, "circuit": None, "known": frozenset()}
 
 
-def record_loss(category: str) -> None:
-    """Records a declared information loss, or fails an undeclared one."""
+def record_loss(category: str, detail: Optional[str] = None) -> None:
+    """Records a declared information loss - optionally with a concrete
+    ``detail`` of what was observed - or fails an undeclared one."""
     if category not in _LOSS_CTX["known"]:
         raise AssertionError(
             f"undeclared information loss {category!r} on edge "
             f"{_LOSS_CTX['id']!r} (circuit {_LOSS_CTX['circuit']!r}); declare it "
             "in the edge's known_losses or fix the converter"
         )
-    _LOSS_REPORT.setdefault(_LOSS_CTX["id"], {}).setdefault(category, set()).add(
-        _LOSS_CTX["circuit"]
+    entry = _LOSS_REPORT.setdefault(_LOSS_CTX["id"], {}).setdefault(
+        category, {"circuits": set(), "observations": set()}
     )
+    entry["circuits"].add(_LOSS_CTX["circuit"])
+    entry["observations"].add((_LOSS_CTX["circuit"], detail))
 
 
 def set_loss_context(edge: "ConversionEdge", circuit: ReferenceCircuit) -> None:
@@ -281,9 +302,14 @@ def set_loss_context(edge: "ConversionEdge", circuit: ReferenceCircuit) -> None:
     _LOSS_CTX["known"] = frozenset(edge.known_losses)
 
 
-def loss_report() -> Dict[str, Dict[str, set]]:
-    """Session report: edge id -> {loss category: set of affected circuits}."""
+def loss_report() -> Dict[str, Dict[str, Dict[str, Any]]]:
+    """Session report: edge id -> {loss category: {circuits, observations}}."""
     return _LOSS_REPORT
+
+
+def loss_description(category: str) -> str:
+    """Human-readable explanation of a loss category (used by the report)."""
+    return _LOSS_DESCRIPTIONS.get(category, "")
 
 
 def check_operation_sequence(
@@ -316,7 +342,14 @@ def check_operation_sequence(
                 f"rotation parameters differ beyond tolerance: "
                 f"{params_a} vs {params_b}"
             )
-            record_loss(LOSS_ROTATION_PRECISION)
+            record_loss(
+                LOSS_ROTATION_PRECISION,
+                detail=(
+                    f"{name_a} on {indices_a}: "
+                    f"{tuple(round(float(p), 10) for p in params_a)} -> "
+                    f"{tuple(round(float(p), 10) for p in params_b)}"
+                ),
+            )
 
     measure_actual = sorted(op for op in actual if op[0] == "measure")
     measure_expected = sorted(op for op in expected_gates if op[0] == "measure")
@@ -422,13 +455,17 @@ def check_qasm(version: int) -> Callable:
     return _check
 
 
-def check_qasm_content_light(version: int) -> Callable:
-    """Lenient OpenQASM ``version`` content check: the source must parse and
-    declare the right qubit count, but the exact operation chain is *not*
-    compared. After a CUDA-Q leg CUDA-Q owns the gate decomposition when
-    re-emitting OpenQASM 2 (``cz -> h+cx+h``, ``s/t -> rz/rx`` sequences,
-    per-qubit classical registers), so structure is only verified semantically
-    at the end of the chain (unitary oracle)."""
+def check_qasm_cudaq_documented(version: int) -> Callable:
+    """Content check for the OpenQASM ``version`` re-emitted after a CUDA-Q leg.
+
+    The source must parse and declare the right qubit count (hard failures).
+    The exact operation chain is then compared, but *any* deviation is recorded
+    as the declared :data:`LOSS_CUDAQ_GATE_DECOMPOSITION` loss - with the
+    concrete deviation as detail - instead of failing the test: CUDA-Q owns the
+    gate basis when re-emitting OpenQASM 2 (``cz -> h+cx+h``, ``s/t -> rz/rx``
+    sequences, per-qubit classical registers). Semantic correctness is
+    guaranteed by the ``unitary`` oracle closing every cudaq loop.
+    """
 
     def _check(result, expected: Optional[ReferenceCircuit] = None) -> None:
         source = _resolve_serialization(result)
@@ -436,13 +473,23 @@ def check_qasm_content_light(version: int) -> Callable:
         num_qubits = _qasm_num_qubits(source, version)
         if expected is not None:
             assert num_qubits == expected.n_qubits, (num_qubits, expected.n_qubits)
+            try:
+                check_operation_sequence(
+                    _qasm_operations(source, version), expected.gates
+                )
+            except AssertionError as exc:
+                record_loss(
+                    LOSS_CUDAQ_GATE_DECOMPOSITION,
+                    detail=f"op chain deviation: {exc}",
+                )
 
     return _check
 
 
 def check_cirq_light(result, expected: Optional[ReferenceCircuit] = None) -> None:
-    """Lenient cirq check: instance + declared qubit count only (see
-    ``check_qasm_content_light`` for why the op-chain is not compared)."""
+    """Lenient cirq check: instance + declared qubit count only. Used on the
+    final SDK of the cudaq loops: the cudaq leg's structure is already
+    documented by ``check_qasm_cudaq_documented`` on the re-emitted QASM2."""
     import cirq
 
     assert isinstance(result, cirq.Circuit), f"expected cirq.Circuit, got {type(result)}"
@@ -454,8 +501,8 @@ def check_cirq_light(result, expected: Optional[ReferenceCircuit] = None) -> Non
 
 
 def check_qiskit_light(result, expected: Optional[ReferenceCircuit] = None) -> None:
-    """Lenient qiskit check: instance + declared qubit count only (see
-    ``check_qasm_content_light``)."""
+    """Lenient qiskit check: instance + declared qubit count only. Used on the
+    final SDK of the cudaq loops (see ``check_cirq_light``)."""
     from qiskit import QuantumCircuit
 
     assert isinstance(
@@ -709,20 +756,19 @@ def build_edges(compression: Compression) -> Tuple[ConversionEdge, ...]:
         A CUDA-Q kernel cannot be introspected without executing it
         (``check_cudaq`` stays a mere existence check), so the information is
         verified *around* the leg: the input serialization is checked exactly
-        (``write_checks``, before CUDA-Q sees it), then the end-of-chain SDK
-        circuit is only required to declare the right qubit count (complete)
-        and to reproduce the reference unitary (correct, via the ``unitary``
-        oracle). Exact operation-chain equality is deliberately *not* asserted
-        on the CUDA-Q output: CUDA-Q normalizes the gate basis when re-emitting
-        OpenQASM 2 (``cz -> h+cx+h``, ``s/t -> rz/rx`` sequences, per-qubit
-        classical registers), so a strict structural match would flag a
-        legitimate rewrite as a regression instead of the semantic loss we are
-        after.
+        (``write_checks``, before CUDA-Q sees it), then the re-emitted QASM2 is
+        checked by :func:`check_qasm_cudaq_documented` - any gate-basis rewrite
+        CUDA-Q performs (``cz -> h+cx+h``, ``s/t -> rz/rx``) is *recorded* in
+        the loss report as a declared :data:`LOSS_CUDAQ_GATE_DECOMPOSITION`
+        loss instead of failing, and the end-of-chain SDK circuit is only
+        required to declare the right qubit count (complete). Semantic
+        correctness is enforced by the ``unitary`` oracle that closes the loop:
+        a drop or alteration of a gate would change the unitary and fail.
         """
         write_checks = (check_program(write_fmt),) + _format_content_checks(write_fmt)
         back_checks = (
             check_program(Serialization.QASM_V2),
-            check_qasm_content_light(2),
+            check_qasm_cudaq_documented(2),
         )
         terminal_converters = {
             "cirq": QuantumProgram.to_cirq_circuit,
@@ -828,20 +874,22 @@ def build_edges(compression: Compression) -> Tuple[ConversionEdge, ...]:
     )
     # cudaq round trips without execution: cudaq -> qasm2 -> {cirq, qiskit}
     # closes on the unitary oracle, so no simulation is needed to check for
-    # losses (see ``add_cudaq_loop``).
+    # losses (see ``add_cudaq_loop``). Both declared losses are inherent to the
+    # cudaq leg: Cirq truncates rotation angles on write, and CUDA-Q rewrites
+    # the gate basis on re-emission.
     add_cudaq_loop(
         "cirq->qasm2->cudaq->qasm2",
         "cirq",
         producer,
         Serialization.QASM_V2,
-        known_losses=(LOSS_ROTATION_PRECISION,),
+        known_losses=(LOSS_ROTATION_PRECISION, LOSS_CUDAQ_GATE_DECOMPOSITION),
     )
     add_cudaq_loop(
         "cirq->qasm3->cudaq->qasm2",
         "cirq",
         producer,
         Serialization.QASM_V3,
-        known_losses=(LOSS_ROTATION_PRECISION,),
+        known_losses=(LOSS_ROTATION_PRECISION, LOSS_CUDAQ_GATE_DECOMPOSITION),
     )
 
     producer = QuantumProgram.from_qiskit_circuit
@@ -909,12 +957,14 @@ def build_edges(compression: Compression) -> Tuple[ConversionEdge, ...]:
         "qiskit",
         producer,
         Serialization.QASM_V2,
+        known_losses=(LOSS_ROTATION_PRECISION, LOSS_CUDAQ_GATE_DECOMPOSITION),
     )
     add_cudaq_loop(
         "qiskit->qasm3->cudaq->qasm2",
         "qiskit",
         producer,
         Serialization.QASM_V3,
+        known_losses=(LOSS_ROTATION_PRECISION, LOSS_CUDAQ_GATE_DECOMPOSITION),
     )
 
     return tuple(edges)
