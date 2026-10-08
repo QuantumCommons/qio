@@ -38,15 +38,14 @@ Design (mirrors ``circuit_testing`` for circuits):
   and recorded (``loss_report()``).
 - **Generic driver** : ``convert`` runs one conversion with its post-checks;
   ``run_path`` runs a full edge (input -> write -> read).
-- **Declarative registries** : ``build_edges()`` returns the full conversion
-  graph (result format -> target SDK) for each available input SDK.
-  ``UNSUPPORTED_CONVERSIONS`` hosts the negative cases.
+- **Declarative registry** : ``build_edges()`` returns the full conversion
+  graph as :class:`ConversionEdge` rows. Each edge is declared by a single
+  ``add(...)`` call (like the circuit battery) with its annotated id
+  (``qiskit.Result -> qiskit_result_json_v1 -> qiskit.Result``), the input kind
+  that produces the intermediate, the target reader and its check, and the
+   losses inherent to the path. ``UNSUPPORTED_CONVERSIONS`` hosts the negative
+   cases.
 """
-
-import os
-import sys
-
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..")))
 
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Optional, Sequence, Tuple
@@ -594,95 +593,131 @@ def _producer_steps(input_kind: str, fmt: Serialization, compression: Compressio
     )
 
 
-_FORMAT_LABEL = {
-    Serialization.CIRQ_RESULT_JSON_V1: "cirq_result_json_v1",
-    Serialization.QISKIT_RESULT_JSON_V1: "qiskit_result_json_v1",
-    Serialization.CUDAQ_SAMPLE_RESULT_JSON_V1: "cudaq_sample_result_json_v1",
-    Serialization.MIMIQ_QCSR_JSON_V1: "mimiq_qcsr_json_v1",
-}
-
-_SDK_TYPE = {
-    "cirq": "cirq.Result",
-    "qiskit": "qiskit.Result",
-    "cudaq": "cudaq.SampleResult",
-    "mimiq": "mimiqcircuits.QCSResults",
-}
-
-# Per-format read edges: target SDK -> (to_<sdk>_result, format check)
-_READ_EDGES = {
-    Serialization.CIRQ_RESULT_JSON_V1: {
-        "cirq": (QuantumProgramResult.to_cirq_result, check_cirq),
-        "qiskit": (QuantumProgramResult.to_qiskit_result, check_qiskit),
-        "mimiq": (QuantumProgramResult.to_mimiq_qcsr, check_mimiq),
-    },
-    Serialization.QISKIT_RESULT_JSON_V1: {
-        "qiskit": (QuantumProgramResult.to_qiskit_result, check_qiskit),
-        "cirq": (QuantumProgramResult.to_cirq_result, check_cirq),
-        "mimiq": (QuantumProgramResult.to_mimiq_qcsr, check_mimiq),
-    },
-    Serialization.CUDAQ_SAMPLE_RESULT_JSON_V1: {
-        "cudaq": (QuantumProgramResult.to_cudaq_sample_result, check_cudaq),
-        "qiskit": (QuantumProgramResult.to_qiskit_result, check_qiskit),
-    },
-    Serialization.MIMIQ_QCSR_JSON_V1: {
-        "mimiq": (QuantumProgramResult.to_mimiq_qcsr, check_mimiq),
-        "cirq": (QuantumProgramResult.to_cirq_result, check_cirq),
-        "qiskit": (QuantumProgramResult.to_qiskit_result, check_qiskit),
-    },
-}
-
 # One (object) input kind per format: the intermediate dicts are produced by
-# qio's own ``*_to_dict`` converters, never hand-authored.
-_INPUT_KINDS = {
-    Serialization.CIRQ_RESULT_JSON_V1: ("cirq",),
-    Serialization.QISKIT_RESULT_JSON_V1: ("qiskit",),
-    Serialization.CUDAQ_SAMPLE_RESULT_JSON_V1: ("cudaq",),
-    Serialization.MIMIQ_QCSR_JSON_V1: ("mimiq",),
+# qio's own ``*_to_dict`` converters, never hand-authored. The write-side steps
+# of an edge are derived from the input kind via this map.
+_INPUT_FORMAT = {
+    "cirq": Serialization.CIRQ_RESULT_JSON_V1,
+    "qiskit": Serialization.QISKIT_RESULT_JSON_V1,
+    "cudaq": Serialization.CUDAQ_SAMPLE_RESULT_JSON_V1,
+    "mimiq": Serialization.MIMIQ_QCSR_JSON_V1,
 }
 
-# Metadata losses declared *today* per (format, target): the fields the
-# current converters drop on this path. Moving a category out of this table
-# makes the corresponding probe fail (turn a documented loss into a
-# regression that forces a converter fix).
-_TARGET_LOSSES = {
-    ("cirq_result_json_v1", "qiskit"): (LOSS_QISKIT_METADATA, LOSS_QISKIT_STATEVECTOR),
-    ("cirq_result_json_v1", "mimiq"): (LOSS_MIMIQ_METADATA, LOSS_MIMIQ_AMPLITUDES),
-    ("qiskit_result_json_v1", "qiskit"): (LOSS_QISKIT_METADATA, LOSS_QISKIT_STATEVECTOR),
-    ("qiskit_result_json_v1", "mimiq"): (LOSS_MIMIQ_METADATA, LOSS_MIMIQ_AMPLITUDES),
-    ("cudaq_sample_result_json_v1", "qiskit"): (LOSS_QISKIT_METADATA, LOSS_QISKIT_STATEVECTOR),
-    ("mimiq_qcsr_json_v1", "mimiq"): (LOSS_MIMIQ_METADATA, LOSS_MIMIQ_AMPLITUDES),
-    ("mimiq_qcsr_json_v1", "qiskit"): (LOSS_QISKIT_METADATA, LOSS_QISKIT_STATEVECTOR),
-}
-
+# Per-source losses that apply whatever the target (e.g. cirq params cannot be
+# stored at all); auto-joined to every edge of that source.
 _SOURCE_STATIC_LOSSES = {
     "cirq": (LOSS_CIRQ_PARAMS,),
 }
 
 
-def _edge_known_losses(input_kind: str, fmt: Serialization, target: str) -> Tuple[str, ...]:
-    label = _FORMAT_LABEL[fmt]
-    known = list(_TARGET_LOSSES.get((label, target), ()))
-    known.extend(_SOURCE_STATIC_LOSSES.get(input_kind, ()))
-    return tuple(known)
-
-
 def build_edges(compression: Compression) -> Tuple[ConversionEdge, ...]:
     """Builds the conversion graph (result format -> target SDK) for one
-    compression, driven from the SDK object through qio's ``*_to_dict``."""
+    compression, driven from the SDK object through qio's ``*_to_dict``.
+
+    Every edge is declared by a single ``add(...)`` call - as in the circuit
+    battery - with its annotated id (``qiskit.Result -> qiskit_result_json_v1
+    -> qiskit.Result``), the ``input_kind`` that produces the intermediate, the
+    ``to_<target>_result`` reader and its check, plus the losses inherent to
+    that path (``known_losses``); any deviation in another category fails the
+    test.
+    """
     edges = []
-    for fmt, reads in _READ_EDGES.items():
-        for input_kind in _INPUT_KINDS[fmt]:
-            write_steps = _producer_steps(input_kind, fmt, compression)
-            for target, (to_fn, check) in reads.items():
-                steps = write_steps + (Step(to_fn, {}, (check,)),)
-                edges.append(
-                    ConversionEdge(
-                        id=f"{_SDK_TYPE[input_kind]}->{_FORMAT_LABEL[fmt]}->{_SDK_TYPE[target]}",
-                        input_fn=_input_fn(input_kind),
-                        steps=steps,
-                        known_losses=_edge_known_losses(input_kind, fmt, target),
-                    )
-                )
+
+    def add(
+        edge_id: str,
+        input_kind: str,
+        read_fn: Callable,
+        read_check: Callable,
+        known_losses: Tuple[str, ...] = (),
+    ) -> None:
+        fmt = _INPUT_FORMAT[input_kind]
+        steps = _producer_steps(input_kind, fmt, compression) + (
+            Step(read_fn, {}, (read_check,)),
+        )
+        known = tuple(known_losses) + _SOURCE_STATIC_LOSSES.get(input_kind, ())
+        edges.append(
+            ConversionEdge(
+                id=edge_id,
+                input_fn=_input_fn(input_kind),
+                steps=steps,
+                known_losses=known,
+            )
+        )
+
+    add(
+        "cirq.Result -> cirq_result_json_v1 -> cirq.Result",
+        "cirq",
+        QuantumProgramResult.to_cirq_result,
+        check_cirq,
+    )
+    add(
+        "cirq.Result -> cirq_result_json_v1 -> qiskit.Result",
+        "cirq",
+        QuantumProgramResult.to_qiskit_result,
+        check_qiskit,
+        (LOSS_QISKIT_METADATA, LOSS_QISKIT_STATEVECTOR),
+    )
+    add(
+        "cirq.Result -> cirq_result_json_v1 -> mimiqcircuits.QCSResults",
+        "cirq",
+        QuantumProgramResult.to_mimiq_qcsr,
+        check_mimiq,
+        (LOSS_MIMIQ_METADATA, LOSS_MIMIQ_AMPLITUDES),
+    )
+    add(
+        "qiskit.Result -> qiskit_result_json_v1 -> qiskit.Result",
+        "qiskit",
+        QuantumProgramResult.to_qiskit_result,
+        check_qiskit,
+        (LOSS_QISKIT_METADATA, LOSS_QISKIT_STATEVECTOR),
+    )
+    add(
+        "qiskit.Result -> qiskit_result_json_v1 -> cirq.Result",
+        "qiskit",
+        QuantumProgramResult.to_cirq_result,
+        check_cirq,
+    )
+    add(
+        "qiskit.Result -> qiskit_result_json_v1 -> mimiqcircuits.QCSResults",
+        "qiskit",
+        QuantumProgramResult.to_mimiq_qcsr,
+        check_mimiq,
+        (LOSS_MIMIQ_METADATA, LOSS_MIMIQ_AMPLITUDES),
+    )
+    add(
+        "cudaq.SampleResult -> cudaq_sample_result_json_v1 -> cudaq.SampleResult",
+        "cudaq",
+        QuantumProgramResult.to_cudaq_sample_result,
+        check_cudaq,
+    )
+    add(
+        "cudaq.SampleResult -> cudaq_sample_result_json_v1 -> qiskit.Result",
+        "cudaq",
+        QuantumProgramResult.to_qiskit_result,
+        check_qiskit,
+        (LOSS_QISKIT_METADATA, LOSS_QISKIT_STATEVECTOR),
+    )
+    add(
+        "mimiqcircuits.QCSResults -> mimiq_qcsr_json_v1 -> mimiqcircuits.QCSResults",
+        "mimiq",
+        QuantumProgramResult.to_mimiq_qcsr,
+        check_mimiq,
+        (LOSS_MIMIQ_METADATA, LOSS_MIMIQ_AMPLITUDES),
+    )
+    add(
+        "mimiqcircuits.QCSResults -> mimiq_qcsr_json_v1 -> cirq.Result",
+        "mimiq",
+        QuantumProgramResult.to_cirq_result,
+        check_cirq,
+    )
+    add(
+        "mimiqcircuits.QCSResults -> mimiq_qcsr_json_v1 -> qiskit.Result",
+        "mimiq",
+        QuantumProgramResult.to_qiskit_result,
+        check_qiskit,
+        (LOSS_QISKIT_METADATA, LOSS_QISKIT_STATEVECTOR),
+    )
+
     return tuple(edges)
 
 
