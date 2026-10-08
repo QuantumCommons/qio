@@ -44,10 +44,10 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config) -> None:
         for category, entry in sorted(categories_map.items()):
             results = ", ".join(sorted(entry["results"]))
             if first:
-                terminalreporter.write_line(f"    {edge_id:45s} {category:28s} {results}")
+                terminalreporter.write_line(f"\n    {edge_id:65s} {category:28s} {results}")
                 first = False
             else:
-                terminalreporter.write_line(f"    {'':45s} {category:28s} {results}")
+                terminalreporter.write_line(f"    {'':65s} {category:28s} {results}")
             for result, detail in sorted(entry["observations"]):
                 suffix = f' : "{detail}"' if detail else ""
                 terminalreporter.write_line(f"      - {result}{suffix}")

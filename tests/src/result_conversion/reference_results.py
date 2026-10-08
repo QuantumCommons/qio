@@ -24,10 +24,33 @@ The bitstring convention is fixed across all SDK fixtures: bitstring character
 the source circuit. Every fixture is built from the *same* canonical bitstring
 set, so every converter (which only re-serializes the bitstrings) must preserve
 them exactly: the result battery compares counts histograms bit-exactly.
+
+Every SDK builder also carries as much *execution metadata* as its format can
+hold (backend identity, job identifiers, measurement date, register name,
+statevector, MIMIQ ``zstates``/``fidelities``/``avggateerrors``/``timings``).
+Because the whole battery is driven from the SDK **object** (the intermediate
+dicts are produced by qio's own ``<sdk>_to_dict`` converters), filling these
+fields lets the battery make the information loss of each conversion path
+explicit in the report.
+
+Serialization note: the intermediate representations are plain JSON/zlib, so
+fields that are not JSON-safe can never cross the intermediate boundary. They
+are kept out of the *input* fixtures on purpose and only checked in memory on
+the output objects:
+
+* cirq ``params`` - ``cirq.ParamResolver`` is not JSON-serializable
+  (``ResultDict._json_dict_`` emits a live resolver; see bellow).
+* qiskit ``statevector`` - stored here as a real-valued amplitude list, which
+  ``Result.to_dict()`` keeps JSON-safe.
+* mimiq ``amplitudes`` - keyed by ``bitarray`` and complex-valued; not JSON
+  safe. When a reference carries a ``statevector``, the qiskit->mimiq edge
+  reconstructs these amplitudes in memory and the checker validates them.
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Sequence
+from typing import Dict, List, Optional, Sequence, Tuple
+
+import numpy as np
 
 
 @dataclass
@@ -37,6 +60,32 @@ class ReferenceResult:
     shots: int
     counts: Dict[str, int]
     description: str = field(default="")
+    # Execution identity (SDK-neutral facts of the "executed" run).
+    backend_name: str = "qio-test-simulator"
+    backend_version: str = "1.0"
+    job_id: str = "qio-result-job"
+    qobj_id: str = "qio-result-qobj"
+    date: str = "2026-01-01T00:00:00+00:00"
+    # CUDA-Q measurement register name (default when sampling the qubit qreg).
+    register_name: str = "q"
+    # Real-valued reference statevector (length 2^n_qubits), JSON-safe through
+    # qiskit Result.to_dict(). Length n bitstring index = qubit 0 is MSB.
+    statevector: Optional[Sequence[float]] = None
+    # MIMIQ QCSResults-only metadata.
+    fidelities: Optional[Sequence[float]] = None
+    avggateerrors: Optional[Sequence[float]] = None
+    zstates: Optional[Sequence[str]] = None
+    timings: Optional[Dict[str, float]] = None
+
+    def _expected_amplitudes(self) -> Dict[str, complex]:
+        """Amplitudes reconstructed from the statevector (qiskit->mimiq path)."""
+        amplitudes = {}
+        if self.statevector is not None:
+            for index, amp in enumerate(self.statevector):
+                if abs(complex(amp)) > 1e-10:
+                    bitstring = format(index, f"0{self.n_qubits}b")
+                    amplitudes[bitstring] = complex(amp)
+        return amplitudes
 
     def __post_init__(self) -> None:
         total = sum(self.counts.values())
@@ -50,6 +99,17 @@ class ReferenceResult:
                     f"{self.name}: bitstring {bitstring!r} has length "
                     f"{len(bitstring)}, expected {self.n_qubits}"
                 )
+        if self.statevector is not None:
+            expect = 2**self.n_qubits
+            if len(self.statevector) != expect:
+                raise ValueError(
+                    f"{self.name}: statevector has {len(self.statevector)} "
+                    f"amplitudes, expected {expect}"
+                )
+            if not all(isinstance(a, (int, float)) for a in self.statevector):
+                raise ValueError(
+                    f"{self.name}: statevector must be real-valued (JSON-safe)"
+                )
 
     # SDK builders - all static, no execution involved.
     #
@@ -59,7 +119,6 @@ class ReferenceResult:
 
     def cirq(self) -> "cirq.Result":
         import cirq
-        import numpy as np
 
         measurements = {
             f"m{k}": np.zeros((self.shots, 1), dtype=np.int8)
@@ -77,60 +136,70 @@ class ReferenceResult:
         result = cirq.ResultDict(
             params=cirq.ParamResolver({}), measurements=measurements
         )
-        # ``ParamResolver`` is not JSON serializable: mirror the SDK tests
-        # (``test_cirq.py`` sets ``_params = None``) so the result dict can be
-        # compressed through qio.
+        # ``cirq.ParamResolver`` is not JSON-serializable, and qio's result
+        # pipeline is plain JSON (no cirq resolver registry): a non-None
+        # ``params`` cannot be stored in CIRQ_RESULT_JSON_V1 at all. We mirror
+        # the SDK tests (``test_cirq.py`` sets ``_params = None``) and report
+        # this unavoidable loss (LOSS_CIRQ_PARAMS) on every cirq-source edge.
         result._params = None
         return result
 
-    def cirq_dict(self) -> dict:
-        """The Cirq result serialized as a dict (cirq_to_dict output)."""
-        return self.cirq()._json_dict_()
-
-    # Qiskit: a Result assembled from the counts histogram (no backend).
+    # Qiskit: a full Result assembled with qiskit's own model dataclasses
+    # (date, headers, backend identity, counts + per-shot memory + statevector).
+    #
+    # ``date`` is stored as an ISO string: a real ``datetime`` is not JSON
+    # serializable (``Result.to_dict()`` leaves it as a datetime object, which
+    # breaks qio's plain-JSON pipeline - same boundary as cirq params).
 
     def qiskit(self) -> "qiskit.result.Result":
         from qiskit.result import Result
+        from qiskit.result.models import ExperimentResult, ExperimentResultData
 
-        return Result.from_dict(
-            {
-                "backend_name": "qio_test_simulator",
-                "backend_version": "1.0",
-                "qobj_id": "qio-result-test",
-                "job_id": "qio-result-test",
-                "success": True,
-                "status": "COMPLETED",
-                "results": [
-                    {
-                        "shots": self.shots,
-                        "success": True,
-                        "status": "DONE",
-                        "header": {
-                            "name": self.name,
-                            "n_qubits": self.n_qubits,
-                            "memory_slots": self.n_qubits,
-                            "qreg_sizes": [["q", self.n_qubits]],
-                            "creg_sizes": [["m", self.n_qubits]],
-                        },
-                        "data": {"counts": dict(self.counts)},
-                    }
-                ],
-            }
+        memory = []
+        for bitstring, count in self.counts.items():
+            memory.extend([bitstring] * count)
+
+        experiment = ExperimentResult(
+            shots=self.shots,
+            success=True,
+            status="DONE",
+            data=ExperimentResultData(
+                counts=dict(self.counts),
+                memory=memory,
+                statevector=(
+                    list(self.statevector) if self.statevector is not None else None
+                ),
+            ),
+            header={
+                "name": self.name,
+                "n_qubits": self.n_qubits,
+                "memory_slots": self.n_qubits,
+                "qreg_sizes": [["q", self.n_qubits]],
+                "creg_sizes": [["m", self.n_qubits]],
+                "metadata": {"source": "qio-result-fixture"},
+            },
         )
 
-    def qiskit_dict(self) -> dict:
-        """The Qiskit result serialized as a dict (qiskit_to_dict output)."""
-        return self.qiskit().to_dict()
+        return Result(
+            backend_name=self.backend_name,
+            backend_version=self.backend_version,
+            job_id=self.job_id,
+            qobj_id=self.qobj_id,
+            date=self.date,
+            status="COMPLETED",
+            success=True,
+            results=[experiment],
+        )
 
     # CUDA-Q: a SampleResult reconstructed by ``deserialize`` from a
     # hand-built serialized blob (the wire format documented by
     # ``cudaq_sample_to_qiskit``): register name, then per bitstring the
-    # triplet ``[value, bit_size, count]``.
+    # triplet ``[value, bit_size, count]``. ``register_name`` is the CUDA-Q
+    # measurement register ("q" when sampling the qubit register).
 
     def _cudaq_serialize(self) -> List[int]:
-        register_name = "q"
-        data: List[int] = [len(register_name)]
-        data.extend(ord(ch) for ch in register_name)
+        data: List[int] = [len(self.register_name)]
+        data.extend(ord(ch) for ch in self.register_name)
         data.append(len(self.counts))
         for bitstring, count in self.counts.items():
             data.append(int(bitstring, 2))
@@ -145,7 +214,10 @@ class ReferenceResult:
         sample_result.deserialize(self._cudaq_serialize())
         return sample_result
 
-    # MIMIQ: a QCSResults populated with the classical states of the run.
+    # MIMIQ: a QCSResults populated with the classical states of the run plus
+    # the metadata its format can hold. ``amplitudes`` is intentionally NOT set
+    # here: it is keyed by ``bitarray`` and complex-valued, hence not JSON
+    # serializable - see the module docstring.
 
     def mimiq(self) -> "mimiqcircuits.QCSResults":
         from bitarray import frozenbitarray
@@ -154,34 +226,43 @@ class ReferenceResult:
         cstates: List[frozenbitarray] = []
         for bitstring, count in self.counts.items():
             cstates.extend([frozenbitarray(bitstring)] * count)
-        return QCSResults(
-            simulator="linalg",
-            version="0.1",
+
+        kwargs: dict = dict(
+            simulator=self.backend_name,
+            version=self.backend_version,
             cstates=cstates,
+            fidelities=list(self.fidelities or []),
+            avggateerrors=list(self.avggateerrors or []),
+            timings=dict(self.timings or {}),
         )
+        if self.zstates:
+            kwargs["zstates"] = [frozenbitarray(z) for z in self.zstates]
 
-    def mimiq_dict(self) -> dict:
-        """The MIMIQ QCSR serialized as a dict (mimiq_to_dict output)."""
-        return {
-            "simulator": "linalg",
-            "version": "0.1",
-            "timings": None,
-            "fidelity_estimate": None,
-            "average_multi_qubit_gate_error_estimate": None,
-            "executions": None,
-            "samples": self.shots,
-            "amplitudes": None,
-            "histogram": dict(self.counts),
-        }
+        return QCSResults(**kwargs)
 
 
-REFERENCE_RESULTS: Sequence[ReferenceResult] = [
+_RT2 = 0.7071067811865475
+
+
+def _ghz3_statevector() -> List[float]:
+    sv = [0.0] * 8
+    sv[0] = _RT2
+    sv[7] = _RT2
+    return sv
+
+
+REFERENCE_RESULTS: Tuple[ReferenceResult, ...] = (
     ReferenceResult(
         name="bell2",
         n_qubits=2,
         shots=1000,
         counts={"00": 509, "11": 491},
         description="2-qubit Bell-state sampling.",
+        statevector=[_RT2, 0.0, 0.0, _RT2],
+        fidelities=[0.995],
+        avggateerrors=[0.002],
+        zstates=["00"],
+        timings={"total": 0.0123, "apply": 0.0091},
     ),
     ReferenceResult(
         name="x11",
@@ -189,6 +270,11 @@ REFERENCE_RESULTS: Sequence[ReferenceResult] = [
         shots=1000,
         counts={"11": 1000},
         description="Deterministic 2-qubit result: x(0), cx(0, 1) -> 11.",
+        statevector=[0.0, 0.0, 0.0, 1.0],
+        fidelities=[1.0],
+        avggateerrors=[0.0],
+        zstates=["11"],
+        timings={"total": 0.0087, "apply": 0.0066},
     ),
     ReferenceResult(
         name="ghz3",
@@ -196,6 +282,11 @@ REFERENCE_RESULTS: Sequence[ReferenceResult] = [
         shots=800,
         counts={"000": 401, "111": 399},
         description="3-qubit GHZ-state sampling.",
+        statevector=_ghz3_statevector(),
+        fidelities=[0.98],
+        avggateerrors=[0.01],
+        zstates=["000"],
+        timings={"total": 0.0231, "apply": 0.0184},
     ),
     ReferenceResult(
         name="single1",
@@ -203,6 +294,11 @@ REFERENCE_RESULTS: Sequence[ReferenceResult] = [
         shots=100,
         counts={"1": 100},
         description="Deterministic single-qubit result.",
+        statevector=[0.0, 1.0],
+        fidelities=[1.0],
+        avggateerrors=[0.0],
+        zstates=["1"],
+        timings={"total": 0.0031, "apply": 0.0022},
     ),
     ReferenceResult(
         name="mixed01",
@@ -210,8 +306,13 @@ REFERENCE_RESULTS: Sequence[ReferenceResult] = [
         shots=600,
         counts={"01": 301, "10": 299},
         description="Asymmetric 2-qubit result (exercises bit ordering).",
+        statevector=[0.0, _RT2, _RT2, 0.0],
+        fidelities=[0.99],
+        avggateerrors=[0.003],
+        zstates=["01"],
+        timings={"total": 0.0119, "apply": 0.0083},
     ),
-]
+)
 
 _REFERENCE_RESULT_INDEX = {c.name: c for c in REFERENCE_RESULTS}
 
