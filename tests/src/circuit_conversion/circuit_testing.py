@@ -308,6 +308,7 @@ LOSS_CIRCUIT_METADATA = "circuit_metadata"
 LOSS_QUBIT_TOPOLOGY = "qubit_topology"
 LOSS_MEASUREMENT_MAPPING = "measurement_mapping"
 LOSS_SYMBOLIC_PARAMS = "symbolic_parameters"
+LOSS_ANALOG_DEVICE = "analog_device"
 
 # Circuit-level information that QASM (2/3) and the CUDA-Q gate-basis rewrite
 # inherently drop; declared as known losses on the QASM/CUDA-Q edges. The
@@ -374,6 +375,15 @@ _LOSS_DESCRIPTIONS = {
         "CirqJSON, but OpenQASM 2 cannot represent them (export raises) and the "
         "cirq OpenQASM importer cannot parse them; the parametrized circuit is "
         "therefore only exercised on the QASM3 and CirqJSON edges"
+    ),
+    LOSS_ANALOG_DEVICE: (
+        "the Pulser abstract repr is device-independent, so in principle the "
+        "device object could be lost/rewritten by a 'from_abstract_repr' round "
+        "trip. With pulser 1.9.1 + the reference devices the device is "
+        "preserved exactly (device equality and channel objects are checked), "
+        "so this category is currently never recorded - it is a declared guard "
+        "that surfaces (tolerated, not failing) any future pulser/device "
+        "version that would drop the device from the serialization"
     ),
 }
 
@@ -778,10 +788,12 @@ def check_pulser(result, expected: Optional[ReferenceCircuit] = None) -> None:
     A Pulser sequence has no gate chain nor a cheaply-computable unitary, so
     the semantic invariant is Pulser's own canonical, device-independent
     serialization: ``Sequence.to_abstract_repr``. The check is therefore:
-    instance, atom count, declared channels and measurement presence (public
-    API), plus exact equality with the *statically built* reference sequence's
-    abstract representation - the analog counterpart of the gate op-chain
-    comparison, and exact because the Pulser round trip is lossless.
+    instance, atom count, declared channels, measurement presence and device
+    equality (public API), plus exact equality with the *statically built*
+    reference sequence's abstract representation - the analog counterpart of
+    the gate op-chain comparison, and exact because the Pulser round trip is
+    lossless. The ``analog_device`` loss guards the device object only (pulser
+    1.9.1 preserves it; a future version dropping it is recorded, not fatal).
     """
     import pulser
 
@@ -802,8 +814,16 @@ def check_pulser(result, expected: Optional[ReferenceCircuit] = None) -> None:
         getattr(result, "_measurement", None),
         spec.measure,
     )
-    reference = expected.pulser().to_abstract_repr()
-    assert result.to_abstract_repr() == reference
+    reference_seq = expected.pulser()
+    if result.device != reference_seq.device:
+        record_loss(
+            LOSS_ANALOG_DEVICE,
+            detail=(
+                f"{reference_seq.device.name} -> {result.device.name} "
+                f"(device not preserved by the abstract repr round trip)"
+            ),
+        )
+    assert result.to_abstract_repr() == reference_seq.to_abstract_repr()
 
 
 def check_pulser_json(result, expected: Optional[ReferenceCircuit] = None) -> None:
@@ -1291,7 +1311,9 @@ def build_edges(compression: Compression) -> Tuple[ConversionEdge, ...]:
     # the "structural" oracle; semantic correctness is enforced by
     # ``check_pulser`` (exact abstract-repr equality with the reference spec)
     # and ``check_pulser_json`` on the intermediate. The Pulser round trip is
-    # lossless, hence no known losses.
+    # lossless at the checked level - except the device, preserved with pulser
+    # 1.9.1 / reference devices but declared as ``analog_device`` as a guard in
+    # case a future version drops it (it would then be recorded, not fail).
     producer = QuantumProgram.from_pulser_sequence
     add(
         "pulser->pulserjson->pulser",
@@ -1301,6 +1323,7 @@ def build_edges(compression: Compression) -> Tuple[ConversionEdge, ...]:
         QuantumProgram.to_pulser_sequence,
         check_pulser,
         oracle="structural",
+        known_losses=(LOSS_ANALOG_DEVICE,),
     )
 
     return tuple(edges)

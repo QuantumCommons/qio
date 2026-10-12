@@ -143,6 +143,13 @@ ReferenceCircuit(
 Analog circuits only run on the `pulser->pulserjson->pulser` edge (the edge
 paradigm filter in `supports_edge` does this automatically).
 
+**Device handling**: the Pulser abstract repr (`Sequence.to_abstract_repr`) is
+device-independent; `check_pulser` asserts the device `==` the reference's and
+declares the `analog_device` loss as a *guard* on the pulser edge. With
+pulser 1.9.1 and the reference devices the device round-trips exactly (so no
+loss is recorded); if a future version drops/rewrites it, the loss would be
+recorded (tolerated) and surfaced by the session report instead of failing.
+
 ## How to add a conversion (an edge)
 
 - **Regular edge**: one `add(...)` call in `build_edges()`:
