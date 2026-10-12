@@ -448,9 +448,12 @@ CIRCUIT_FEATURE_COVERAGE = (
     ),
     (
         "calibrations & pulse",
-        "not exercised",
-        "Qiskit Pulse calibrations and QASM3 defcal require converter-level "
-        "support; no reference circuit carries them",
+        "partial (analog)",
+        "no Qiskit Pulse calibrations / QASM3 defcal support yet, but the "
+        "analog paradigm is exercised on the 'pulser->pulserjson->pulser' "
+        "edge: AnalogSpec (register coords, global/local channels, constant & "
+        "Blackman pulses, measurement) round trips exactly through the "
+        "Pulser abstract repr",
     ),
     (
         "measurement mapping & memory slots",
@@ -768,6 +771,59 @@ def check_cirq_json(result, expected: Optional[ReferenceCircuit] = None) -> None
         _check_cirq_circuit_info(circuit, expected)
 
 
+def check_pulser(result, expected: Optional[ReferenceCircuit] = None) -> None:
+    """Validates an analog Pulser ``Sequence`` against the reference
+    :class:`AnalogSpec`.
+
+    A Pulser sequence has no gate chain nor a cheaply-computable unitary, so
+    the semantic invariant is Pulser's own canonical, device-independent
+    serialization: ``Sequence.to_abstract_repr``. The check is therefore:
+    instance, atom count, declared channels and measurement presence (public
+    API), plus exact equality with the *statically built* reference sequence's
+    abstract representation - the analog counterpart of the gate op-chain
+    comparison, and exact because the Pulser round trip is lossless.
+    """
+    import pulser
+
+    assert isinstance(result, pulser.Sequence), f"expected pulser.Sequence, got {type(result)}"
+    if expected is None or expected.paradigm != "analog":
+        return
+    spec = expected.analog
+    assert spec is not None, f"no analog spec on {expected.name!r}"
+    assert len(result.register.qubits) == expected.n_qubits, (
+        len(result.register.qubits),
+        expected.n_qubits,
+    )
+    assert set(result.declared_channels) == set(spec.channels), (
+        set(result.declared_channels),
+        set(spec.channels),
+    )
+    assert bool(getattr(result, "_measurement", None)) == spec.measure, (
+        getattr(result, "_measurement", None),
+        spec.measure,
+    )
+    reference = expected.pulser().to_abstract_repr()
+    assert result.to_abstract_repr() == reference
+
+
+def check_pulser_json(result, expected: Optional[ReferenceCircuit] = None) -> None:
+    """Content check of the ``PULSER_SEQUENCE_JSON_V1`` intermediate: it must
+    be a valid ``Sequence`` abstract repr (parses, right atom count) and
+    re-serialize identically - Pulser's abstract repr is canonical."""
+    import pulser
+
+    source = _resolve_serialization(result)
+    assert source, "empty Pulser abstract repr"
+    sequence = pulser.Sequence.from_abstract_repr(source)
+    assert isinstance(sequence, pulser.Sequence), type(sequence)
+    if expected is not None:
+        assert len(sequence.register.qubits) == expected.n_qubits, (
+            len(sequence.register.qubits),
+            expected.n_qubits,
+        )
+    assert sequence.to_abstract_repr() == source
+
+
 def _qasm_num_qubits(source: str, version: int) -> int:
     if version == 2:
         from qiskit import qasm2
@@ -876,6 +932,7 @@ class ConversionEdge:
     steps: Tuple[Step, ...]
     oracle: str = "unitary"  # "unitary" | "counts" | "structural"
     known_losses: Tuple[str, ...] = ()  # inherent information losses of the path
+    paradigm: str = "gate"  # programming paradigm the edge operates on
 
 
 def convert(circuit, converter, *args, checks=(), expected=None, **kwargs) -> Any:
@@ -933,6 +990,15 @@ def _to_unitary(circuit) -> Any:
 INPUT_FNS = {
     "cirq": lambda c: c.cirq(),
     "qiskit": lambda c: c.qiskit(),
+    "pulser": lambda c: c.pulser(),
+}
+
+# Programming paradigm each input SDK belongs to: a circuit only runs on edges
+# of its own paradigm (see ``ReferenceCircuit.supports_edge``).
+INPUT_PARADIGMS = {
+    "cirq": "gate",
+    "qiskit": "gate",
+    "pulser": "analog",
 }
 
 
@@ -957,6 +1023,7 @@ def build_edges(compression: Compression) -> Tuple[ConversionEdge, ...]:
                 tuple(steps),
                 oracle=oracle,
                 known_losses=known_losses,
+                paradigm=INPUT_PARADIGMS[input_kind],
             )
         )
 
@@ -1219,6 +1286,23 @@ def build_edges(compression: Compression) -> Tuple[ConversionEdge, ...]:
         ),
     )
 
+    # Analog paradigm: Pulser Sequence <-> Pulser Sequence JSON (PULSER).
+    # There is no cheap unitary for a pulser sequence, so the edge closes on
+    # the "structural" oracle; semantic correctness is enforced by
+    # ``check_pulser`` (exact abstract-repr equality with the reference spec)
+    # and ``check_pulser_json`` on the intermediate. The Pulser round trip is
+    # lossless, hence no known losses.
+    producer = QuantumProgram.from_pulser_sequence
+    add(
+        "pulser->pulserjson->pulser",
+        "pulser",
+        producer,
+        Serialization.PULSER_SEQUENCE_JSON_V1,
+        QuantumProgram.to_pulser_sequence,
+        check_pulser,
+        oracle="structural",
+    )
+
     return tuple(edges)
 
 
@@ -1229,6 +1313,8 @@ def _format_content_checks(fmt: Serialization) -> Tuple[Callable, ...]:
         return (check_qasm(3),)
     if fmt in (Serialization.CIRQ_CIRCUIT_JSON_V1,):
         return (check_cirq_json,)
+    if fmt in (Serialization.PULSER_SEQUENCE_JSON_V1,):
+        return (check_pulser_json,)
     return ()
 
 
@@ -1245,8 +1331,18 @@ def _bell_cudaq():
     return get_reference_circuit("bell").cudaq_kernel()
 
 
+def _analog_global_pulser():
+    return get_reference_circuit("analog_global").pulser()
+
+
 def _cirq_program(dest_format: Serialization) -> QuantumProgram:
     return QuantumProgram.from_cirq_circuit(_bell_cirq(), dest_format=dest_format)
+
+
+def _pulser_program(dest_format: Serialization) -> QuantumProgram:
+    return QuantumProgram.from_pulser_sequence(
+        _analog_global_pulser(), dest_format=dest_format
+    )
 
 
 def _param_qiskit():
@@ -1299,5 +1395,25 @@ UNSUPPORTED_CONVERSIONS = (
     (
         "to_cudaq_kernel on CIRQJSON",
         lambda: _cirq_program(Serialization.CIRQ_CIRCUIT_JSON_V1).to_cudaq_kernel(),
+    ),
+    (
+        "to_pulser_sequence on QASM_V2",
+        lambda: QuantumProgram.from_qiskit_circuit(
+            _bell_qiskit(), dest_format=Serialization.QASM_V2
+        ).to_pulser_sequence(),
+    ),
+    (
+        "to_mimiq_circuit on PULSERJSON",
+        lambda: _cirq_program(Serialization.PULSER_SEQUENCE_JSON_V1).to_mimiq_circuit(),
+    ),
+    (
+        "from_pulser_sequence -> QASM_V2",
+        lambda: QuantumProgram.from_pulser_sequence(
+            _analog_global_pulser(), dest_format=Serialization.QASM_V2
+        ),
+    ),
+    (
+        "to_cirq_circuit on PULSERJSON",
+        lambda: _pulser_program(Serialization.PULSER_SEQUENCE_JSON_V1).to_cirq_circuit(),
     ),
 )

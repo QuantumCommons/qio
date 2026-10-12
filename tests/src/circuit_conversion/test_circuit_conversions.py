@@ -40,7 +40,7 @@ CIRCUIT_CONVERSIONS = []
 for compression in COMPRESSIONS:
     for edge in build_edges(compression):
         for circuit in REFERENCE_CIRCUITS:
-            if not circuit.supports_edge(edge.id):
+            if not circuit.supports_edge(edge):
                 continue
             oracle = circuit.oracle or edge.oracle
             if oracle == "counts" and circuit.expected_counts is None:

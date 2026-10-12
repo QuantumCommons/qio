@@ -13,10 +13,17 @@
 # limitations under the License.
 """Static, controlled input circuits for the conversion test battery.
 
-Each :class:`ReferenceCircuit` is defined *once* (a literal gate list with known
-``n_qubits`` and, for deterministic circuits, known measurement counts) and
-exposed in every SDK representation (Cirq, Qiskit, OpenQASM 2, OpenQASM 3,
-CUDA-Q kernel) through a single generator function ``get_reference_circuit``.
+Each :class:`ReferenceCircuit` is defined *once* per programming paradigm and
+exposed in every supported SDK representation through the single generator
+function ``get_reference_circuit``.
+
+- **Gate-based paradigm** (``paradigm="gate"``): a literal gate list with known
+  ``n_qubits`` and, for deterministic circuits, known measurement counts. Built
+  for Cirq, Qiskit, OpenQASM 2, OpenQASM 3 and CUDA-Q.
+- **Analog paradigm** (``paradigm="analog"``): a :class:`AnalogSpec` describing
+  an analog pulse schedule (atom register coordinates, declared channels,
+  pulses per channel, optional measurement). For now it carries the minimal
+  information needed to build a Pulser ``Sequence`` (``ReferenceCircuit.pulser``).
 
 The gate set is restricted to gates supported by all converters
 (``qio/utils/conversion/program/*``), notably ``qasm3_to_cudaq`` and
@@ -72,6 +79,50 @@ def _fmt(num: float) -> str:
     return repr(float(num))
 
 
+# Programming-paradigm discriminator: each ReferenceCircuit belongs to one
+# paradigm family (gate-based circuits, analog pulse schedules, ...) and only
+# runs on the conversion edges of that same paradigm (see
+# ``ConversionEdge.paradigm`` in ``circuit_testing`` and ``supports_edge``).
+PARADIGM_GATE = "gate"
+PARADIGM_ANALOG = "analog"
+
+
+@dataclass
+class PulseSpec:
+    """A single pulse on one channel of an analog schedule.
+
+    ``kind`` describes the amplitude waveform shape ("constant" | "blackman").
+    ``target`` is the qubit id (e.g. "q0") the pulse is addressed to - only
+    meaningful on local-addressing channels, None on global channels.
+    """
+
+    channel: str
+    kind: str
+    duration: int
+    amplitude: float
+    detuning: float = 0.0
+    phase: float = 0.0
+    target: Optional[str] = None
+
+
+@dataclass
+class AnalogSpec:
+    """Declarative description of an analog program (paradigm="analog").
+
+    For now it encodes exactly the information needed to build a Pulser
+    ``Sequence`` (``register_coords``, ``channels``, ``pulses``, ``measure``);
+    the SDK-specific construction lives in ``ReferenceCircuit.pulser`` so the
+    spec itself stays decoupled from Pulser and can later feed other analog
+    SDKs.
+    """
+
+    name: str
+    register_coords: List[Tuple[float, float]]
+    channels: Dict[str, str]  # channel name -> pulser channel type ("rydberg_global", ...)
+    pulses: List[PulseSpec]
+    measure: bool = False
+
+
 @dataclass
 class ReferenceCircuit:
     name: str
@@ -88,15 +139,22 @@ class ReferenceCircuit:
     #   whose unitary cannot be computed, like unbound-parameter circuits).
     # - supported_edge_ids optionally restricts the edges this circuit runs on,
     #   for features only a subset of formats can carry (symbolic parameters).
+    # - paradigm discriminates the programming paradigm this circuit belongs
+    #   to ("gate" | "analog"); the circuit only runs on edges of that paradigm.
+    # - analog carries the analog schedule spec when paradigm == "analog".
     global_phase: float = field(default=0.0)
     metadata: Optional[Dict[str, Any]] = field(default=None)
     qubit_scheme: str = field(default="line")
     oracle: Optional[str] = field(default=None)
     supported_edge_ids: Optional[Tuple[str, ...]] = field(default=None)
+    paradigm: str = field(default=PARADIGM_GATE)
+    analog: Optional[AnalogSpec] = field(default=None)
 
-    def supports_edge(self, edge_id: str) -> bool:
+    def supports_edge(self, edge) -> bool:
+        if edge.paradigm != self.paradigm:
+            return False
         if self.supported_edge_ids is not None:
-            return edge_id in self.supported_edge_ids
+            return edge.id in self.supported_edge_ids
         return True
 
     def has_measurements(self) -> bool:
@@ -262,6 +320,50 @@ class ReferenceCircuit:
     def cudaq_kernel(self):
         return self._build_cudaq()
 
+    def pulser(self) -> "pulser.Sequence":
+        """Builds the analog :class:`AnalogSpec` as a real Pulser ``Sequence``.
+
+        Only valid for ``paradigm="analog"`` circuits. The construction uses
+        the minimal Pulser information carried by the spec: coordinates ->
+        ``Register.from_coordinates``, channels -> ``declare_channel`` and
+        pulses -> ``seq.add`` (local pulses target the atom id first). The
+        :func:`pulser.Sequence.to_abstract_repr` serialization is Pulser's own
+        canonical, device-independent representation, so an ``AnalogSpec`` and
+        a round-tripped ``Sequence`` can be compared by that representation.
+        """
+        if self.paradigm != PARADIGM_ANALOG or self.analog is None:
+            raise NotImplementedError(
+                "pulser() requires an analog-paradigm circuit (analog spec)"
+            )
+        from pulser import Pulse, Sequence
+        from pulser.devices import MockDevice
+        from pulser.register import Register
+        from pulser.waveforms import BlackmanWaveform, ConstantWaveform
+
+        spec = self.analog
+        register = Register.from_coordinates(spec.register_coords, prefix="q")
+        seq = Sequence(register, MockDevice)
+        for channel, channel_type in spec.channels.items():
+            seq.declare_channel(channel, channel_type)
+        for pulse_spec in spec.pulses:
+            if pulse_spec.target is not None:
+                seq.target(pulse_spec.target, pulse_spec.channel)
+            if pulse_spec.kind == "blackman":
+                amp = BlackmanWaveform(pulse_spec.duration, pulse_spec.amplitude)
+            else:
+                amp = ConstantWaveform(pulse_spec.duration, pulse_spec.amplitude)
+            seq.add(
+                Pulse(
+                    amp,
+                    ConstantWaveform(pulse_spec.duration, pulse_spec.detuning),
+                    pulse_spec.phase,
+                ),
+                pulse_spec.channel,
+            )
+        if spec.measure:
+            seq.measure()
+        return seq
+
 
 def _ops(*operations: Operation) -> List[Operation]:
     for gate, params, indices in operations:
@@ -394,6 +496,72 @@ REFERENCE_CIRCUITS = [
             "Unbound parameterized circuit rx(theta). Symbolic parameters only "
             "survive QASM3 (input float) and CirqJSON; QASM2 raises on unbound "
             "params and the cirq qasm importer cannot parse them."
+        ),
+    ),
+    ReferenceCircuit(
+        name="analog_global",
+        n_qubits=2,
+        gates=(),
+        paradigm=PARADIGM_ANALOG,
+        analog=AnalogSpec(
+            name="analog_global",
+            register_coords=[(0, 0), (0, 10)],
+            channels={"rydberg": "rydberg_global"},
+            pulses=[
+                PulseSpec(
+                    channel="rydberg",
+                    kind="constant",
+                    duration=100,
+                    amplitude=1.0,
+                    detuning=0.1,
+                    phase=0.0,
+                ),
+            ],
+            measure=True,
+        ),
+        oracle="structural",
+        description=(
+            "2-atom analog schedule on a global Rydberg channel (constant "
+            "pulse) with a measurement; round trips through "
+            "QuantumProgram.from/to_pulser_sequence."
+        ),
+    ),
+    ReferenceCircuit(
+        name="analog_local",
+        n_qubits=2,
+        gates=(),
+        paradigm=PARADIGM_ANALOG,
+        analog=AnalogSpec(
+            name="analog_local",
+            register_coords=[(0, 0), (10, 0)],
+            channels={"local": "rydberg_local"},
+            pulses=[
+                PulseSpec(
+                    channel="local",
+                    kind="constant",
+                    duration=40,
+                    amplitude=0.5,
+                    detuning=0.2,
+                    phase=0.3,
+                    target="q0",
+                ),
+                PulseSpec(
+                    channel="local",
+                    kind="blackman",
+                    duration=60,
+                    amplitude=0.8,
+                    detuning=0.0,
+                    phase=0.0,
+                    target="q1",
+                ),
+            ],
+            measure=False,
+        ),
+        oracle="structural",
+        description=(
+            "2-atom analog schedule on a local Rydberg channel: one constant "
+            "pulse addressed to q0 and one Blackman pulse to q1, no "
+            "measurement."
         ),
     ),
 ]

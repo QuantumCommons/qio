@@ -71,6 +71,7 @@ Current ids are of the form `cirq->qasm2->cirq`, `qiskit->qasm3->cudaq`,
 - CirqJSON: `cirq`/`qiskit` → (only read back as cirq).
 - No-execution CUDA-Q loops:
   `{cirq,qiskit}->qasm{2,3}->cudaq->qasm2->{cirq,qiskit}`.
+- Analog: `pulser->pulserjson->pulser` (analog-paradigm circuits only).
 - *Unsupported* cases (e.g. `from_cudaq_kernel -> CIRQJSON`,
   `to_mimiq_circuit on QASM_V3`) live in `UNSUPPORTED_CONVERSIONS`: every
   `(id, callable)` entry must raise an `Exception`.
@@ -82,6 +83,7 @@ Current ids are of the form `cirq->qasm2->cirq`, `qiskit->qasm3->cudaq`,
 | `QASM_V2` | `check_qasm(2)` | `to_qasm2_circuit` |
 | `QASM_V3` | `check_qasm(3)` | — |
 | `CIRQ_CIRCUIT_JSON_V1` | `check_cirq_json` | `to_cirq_circuit` |
+| `PULSER_SEQUENCE_JSON_V1` | `check_pulser_json` | `to_pulser_sequence` |
 
 Supported gate set: `h, x, y, z, s, t, sdg, tdg, rx, ry, rz, cx, cz, measure`.
 The parameterized gates are `rx/ry/rz`; a symbolic parameter is encoded as the
@@ -110,6 +112,36 @@ string marker `"~<name>"` (see the `parametrized` circuit).
    `oracle="structural"` and `supported_edge_ids=(...)` for circuits whose
    unitary cannot be computed or that only run on a subset of formats
    (e.g. symbolic parameters).
+
+### Adding an *analog* circuit (`paradigm="analog"`)
+
+Analog schedules are not gate lists: describe them with an `AnalogSpec`
+(atom coordinates, channels, pulses) and let `ReferenceCircuit.pulser()` build
+the Pulser `Sequence`:
+
+```python
+ReferenceCircuit(
+    name="analog_global",
+    n_qubits=2,
+    gates=(),
+    paradigm="analog",
+    analog=AnalogSpec(
+        name="analog_global",
+        register_coords=[(0, 0), (0, 10)],
+        channels={"rydberg": "rydberg_global"},
+        pulses=[
+            PulseSpec(channel="rydberg", kind="constant",
+                      duration=100, amplitude=1.0, detuning=0.1),
+        ],
+        measure=True,
+    ),
+    oracle="structural",
+    description="...",
+),
+```
+
+Analog circuits only run on the `pulser->pulserjson->pulser` edge (the edge
+paradigm filter in `supports_edge` does this automatically).
 
 ## How to add a conversion (an edge)
 
