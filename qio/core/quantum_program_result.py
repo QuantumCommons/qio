@@ -28,6 +28,8 @@ class QuantumProgramResultSerializationFormat(IntEnum):
     QISKIT_RESULT_JSON_V1 = 2
     CUDAQ_SAMPLE_RESULT_JSON_V1 = 3
     MIMIQ_QCSR_JSON_V1 = 4
+    PULSER_RESULT_JSON_V1 = 5
+    PERCEVAL_JSON_V1 = 6
 
 
 class QuantumProgramResultCompressionFormat(IntEnum):
@@ -120,6 +122,76 @@ class QuantumProgramResult:
             raise Exception(
                 "unsupported unserialization:", self.serialization_format, e
             )
+
+    @classmethod
+    def from_pulser_result(
+        cls,
+        pulser_result: "pulser.backend.Results",
+        compression_format: QuantumProgramResultCompressionFormat = QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1,
+    ) -> "QuantumProgramResult":
+        from qio.utils.conversion.program_result.pulser_to_dict import (
+            convert as pulser_to_dict_convert,
+        )
+
+        pulser_result_dict = pulser_to_dict_convert(pulser_result)
+
+        return cls.from_pulser_result_dict(pulser_result_dict, compression_format)
+
+    @classmethod
+    def from_pulser_result_dict(
+        cls,
+        pulser_result_dict: Union[str, Dict],
+        compression_format: QuantumProgramResultCompressionFormat = QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1,
+    ) -> "QuantumProgramResult":
+        if isinstance(pulser_result_dict, str):
+            pulser_result_dict = json.loads(
+                pulser_result_dict
+            )  # Ensure serialization is not ill-formatted
+
+        compression_format = (
+            QuantumProgramResultCompressionFormat.NONE
+            if compression_format
+            == QuantumProgramResultCompressionFormat.UNKNOWN_COMPRESSION_FORMAT
+            else compression_format
+        )
+
+        apply_compression = {
+            QuantumProgramResultCompressionFormat.NONE: json.dumps,
+            QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1: dict_to_zlib,
+        }
+
+        try:
+            return cls(
+                compression_format=compression_format,
+                serialization_format=QuantumProgramResultSerializationFormat.PULSER_RESULT_JSON_V1,
+                serialization=apply_compression[compression_format](pulser_result_dict),
+            )
+        except Exception as e:
+            raise Exception("unsupported serialization:", compression_format, e)
+
+    def to_pulser_result(self, **kwargs) -> "pulser.backend.Results":
+        from qio.utils.conversion.program_result.dict_to_pulser import (
+            convert as dict_to_pulser_convert,
+        )
+
+        apply_uncompression = {
+            QuantumProgramResultCompressionFormat.NONE: json.loads,
+            QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1: zlib_to_dict,
+        }
+
+        serialization = apply_uncompression[self.compression_format](self.serialization)
+
+        try:
+            apply_unserialization = {
+                QuantumProgramResultSerializationFormat.PULSER_RESULT_JSON_V1: dict_to_pulser_convert,
+            }
+
+            return apply_unserialization[self.serialization_format](
+                serialization, **kwargs
+            )
+
+        except Exception as e:
+            raise Exception("unsupported serialization:", self.serialization_format, e)
 
     @classmethod
     def from_qiskit_result(
