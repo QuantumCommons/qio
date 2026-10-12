@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import perceval as pcvl
-from perceval import OutputArchive, serialization
+from perceval.serialization import OutputArchive, Serialization
 
 
 def convert(pcvl_circuit: pcvl.Circuit):
     output_archive = OutputArchive()
-    serialization.serialize(pcvl_circuit, output_archive)
+    Serialization.serialize(pcvl_circuit, output_archive)
     return output_archive.to_text()

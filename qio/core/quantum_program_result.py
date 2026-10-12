@@ -29,7 +29,7 @@ class QuantumProgramResultSerializationFormat(IntEnum):
     CUDAQ_SAMPLE_RESULT_JSON_V1 = 3
     MIMIQ_QCSR_JSON_V1 = 4
     PULSER_RESULT_JSON_V1 = 5
-    PERCEVAL_JSON_V1 = 6
+    PERCEVAL_RESULT_JSON_V1 = 6
 
 
 class QuantumProgramResultCompressionFormat(IntEnum):
@@ -184,6 +184,86 @@ class QuantumProgramResult:
         try:
             apply_unserialization = {
                 QuantumProgramResultSerializationFormat.PULSER_RESULT_JSON_V1: dict_to_pulser_convert,
+            }
+
+            return apply_unserialization[self.serialization_format](
+                serialization, **kwargs
+            )
+
+        except Exception as e:
+            raise Exception("unsupported serialization:", self.serialization_format, e)
+
+    @classmethod
+    def from_perceval_result(
+        cls,
+        perceval_result: Union[
+            "pcvl.SVDistribution",
+            "pcvl.BSDistribution",
+            "pcvl.BSCount",
+            "pcvl.BSSamples",
+        ],
+        compression_format: QuantumProgramResultCompressionFormat = QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1,
+    ) -> "QuantumProgramResult":
+        from qio.utils.conversion.program_result.perceval_to_dict import (
+            convert as perceval_to_dict_convert,
+        )
+
+        perceval_result_dict = perceval_to_dict_convert(perceval_result)
+
+        return cls.from_perceval_result_dict(perceval_result_dict, compression_format)
+
+    @classmethod
+    def from_perceval_result_dict(
+        cls,
+        perceval_result_dict: Union[str, Dict],
+        compression_format: QuantumProgramResultCompressionFormat = QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1,
+    ) -> "QuantumProgramResult":
+        if isinstance(perceval_result_dict, str):
+            perceval_result_dict = json.loads(
+                perceval_result_dict
+            )  # Ensure serialization is not ill-formatted
+
+        compression_format = (
+            QuantumProgramResultCompressionFormat.NONE
+            if compression_format
+            == QuantumProgramResultCompressionFormat.UNKNOWN_COMPRESSION_FORMAT
+            else compression_format
+        )
+
+        apply_compression = {
+            QuantumProgramResultCompressionFormat.NONE: json.dumps,
+            QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1: dict_to_zlib,
+        }
+
+        try:
+            return cls(
+                compression_format=compression_format,
+                serialization_format=QuantumProgramResultSerializationFormat.PERCEVAL_RESULT_JSON_V1,
+                serialization=apply_compression[compression_format](perceval_result_dict),
+            )
+        except Exception as e:
+            raise Exception("unsupported serialization:", compression_format, e)
+
+    def to_perceval_result(self, **kwargs) -> Union[
+        "pcvl.SVDistribution",
+        "pcvl.BSDistribution",
+        "pcvl.BSCount",
+        "pcvl.BSSamples",
+    ]:
+        from qio.utils.conversion.program_result.dict_to_perceval import (
+            convert as dict_to_perceval_convert,
+        )
+
+        apply_uncompression = {
+            QuantumProgramResultCompressionFormat.NONE: json.loads,
+            QuantumProgramResultCompressionFormat.ZLIB_BASE64_V1: zlib_to_dict,
+        }
+
+        serialization = apply_uncompression[self.compression_format](self.serialization)
+
+        try:
+            apply_unserialization = {
+                QuantumProgramResultSerializationFormat.PERCEVAL_RESULT_JSON_V1: dict_to_perceval_convert,
             }
 
             return apply_unserialization[self.serialization_format](

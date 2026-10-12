@@ -11,8 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from perceval import InputArchive, serialization
+from perceval.serialization import InputArchive, Serialization
+
 
 def convert(circuit_str: str):
-    input_archive = InputArchive.from_text(serialized_circuit)
-    return serialization.deserialize(input_archive)
+    input_archive = InputArchive.from_text(circuit_str)
+    return Serialization.deserialize(input_archive)
