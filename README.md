@@ -95,6 +95,8 @@ flowchart LR
         CIRQ_IN["Cirq<br/>(cirq.Circuit)"]
         QISKIT_IN["Qiskit<br/>(qiskit.QuantumCircuit)"]
         CUDAQ_IN["CUDA Quantum<br/>(cudaq.Kernel)"]
+        PULSER_IN["Pulser<br/>(pulser.Sequence)"]
+        PERCEVAL_IN["Perceval<br/>(perceval.Circuit)"]
     end
 
     subgraph SER["Serialization format"]
@@ -104,6 +106,8 @@ flowchart LR
         QASM3["OpenQASM 3"]
         QIR["QIR"]
         CIRQJSON["Cirq JSON"]
+        PULSERJSON["Pulser JSON"]
+        PERCEVALJSON["Perceval JSON"]
     end
 
     subgraph OUT["Output SDKs (read from format)"]
@@ -112,12 +116,8 @@ flowchart LR
         QISKIT_OUT["Qiskit<br/>(qiskit.QuantumCircuit)"]
         CUDAQ_OUT["CUDA Quantum<br/>(cudaq.Kernel)"]
         MIMIQ_OUT["MIMIQ<br/>(mimiqcircuits.Circuit)"]
-    end
-
-    subgraph DECL["Declared serialization format (unimplemented converters)"]
-        direction TB
-        PERCEVAL["Perceval JSON"]
-        PULSER["Pulser Sequence JSON"]
+        PULSER_OUT["PULSER<br/>(pulser.Sequence)"]
+        PERCEVAL_OUT["Perceval<br/>(perceval.Circuit)"]
     end
 
     CIRQ_IN -->|cirq_to_cirqjson| CIRQJSON
@@ -127,8 +127,12 @@ flowchart LR
     QISKIT_IN -->|qiskit_to_qasm3| QASM3
     CUDAQ_IN -->|cudaq_to_qasm2| QASM2
     CUDAQ_IN -->|cudaq_to_qir| QIR
+    PULSER_IN -->|pulser_to_pulserjson| PULSERJSON
+    PERCEVAL_IN -->|perceval_to_percevaljson| PERCEVALJSON
 
     CIRQJSON -->|cirqjson_to_cirq| CIRQ_OUT
+    PULSERJSON -->|pulserjson_to_pulser| PULSER_OUT
+    PERCEVALJSON -->|percevaljson_to_perceval| PERCEVAL_OUT
     QASM1 -->|qasm1_to_cirq| CIRQ_OUT
     QASM2 -->|qasm2_to_cirq| CIRQ_OUT
     QASM3 -->|qasm3_to_cirq| CIRQ_OUT
@@ -145,9 +149,8 @@ flowchart LR
     classDef fmt fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px,color:#062b07,font-weight:bold,rx:20px,ry:20px;
     classDef decl fill:#f3e5f5,stroke:#4a148c,stroke-width:2px,stroke-dasharray: 5 5,color:#2a0a4a,font-weight:bold,rx:20px,ry:20px;
 
-    class CIRQ_IN,QISKIT_IN,CUDAQ_IN,CIRQ_OUT,QISKIT_OUT,CUDAQ_OUT,MIMIQ_OUT sdk;
-    class QASM1,QASM2,QASM3,QIR,CIRQJSON fmt;
-    class PERCEVAL,PULSER decl;
+    class CIRQ_IN,QISKIT_IN,CUDAQ_IN,PULSER_IN,PERCEVAL_IN,CIRQ_OUT,QISKIT_OUT,CUDAQ_OUT,MIMIQ_OUT,PULSER_OUT,PERCEVAL_OUT sdk;
+    class QASM1,QASM2,QASM3,QIR,CIRQJSON,PULSERJSON,PERCEVALJSON fmt;
 ```
 
 ### Entrypoints in `qio`
@@ -157,6 +160,8 @@ flowchart LR
 | Cirq | `QuantumProgram.from_cirq_circuit` | Cirq JSON, OpenQASM 2, OpenQASM 3 |
 | Qiskit | `QuantumProgram.from_qiskit_circuit` | OpenQASM 2, OpenQASM 3 |
 | CUDA Quantum | `QuantumProgram.from_cudaq_kernel` | OpenQASM 2 (+ QIR via `cudaq_to_qir`) |
+| Pulser | `QuantumProgram.from_pulser_sequence` | Pulser JSON |
+| Perceval | `QuantumProgram.from_perceval_circuit` | Perceval JSON |
 
 | Target SDK | Read method | Supported input formats |
 |---|---|---|
@@ -164,6 +169,8 @@ flowchart LR
 | Qiskit | `QuantumProgram.to_qiskit_circuit` | OpenQASM 1/2/3 |
 | CUDA Quantum | `QuantumProgram.to_cudaq_kernel` | OpenQASM 2/3 |
 | MIMIQ | `QuantumProgram.to_mimiq_circuit` | OpenQASM 2 |
+| Pulser | `QuantumProgram.to_pulser_sequence` | Pulser JSON |
+| Perceval | `QuantumProgram.to_perceval_circuit` | Perceval JSON |
 
 ## qio result conversion mapping
 
