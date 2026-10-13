@@ -36,5 +36,8 @@ jobs:
     - name: Install test
       run: pip install -r tests/requirements.txt
 
-    - name: Run test
-      run: pytest -s --showprogress -vv tests/
+    - name: Run test (main battery)
+      run: pytest -s --showprogress -vv tests/ -k "not perceval"
+
+    - name: Run test (photonic / perceval battery)
+      run: pytest -s --showprogress -vv tests/src/circuit_conversion/ tests/src/result_conversion/ -k "perceval"

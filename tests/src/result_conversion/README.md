@@ -56,6 +56,7 @@ cirq.Result   -> cirq_result_json_v1   -> mimiqcircuits.QCSResults
 | Qiskit | `qiskit.Result` |
 | CUDA-Q | `cudaq.SampleResult` |
 | MIMIQ | `mimiqcircuits.QCSResults` |
+| Perceval | `pcvl.BSSamples` |
 
 | Format | Label |
 |---|---|
@@ -63,13 +64,16 @@ cirq.Result   -> cirq_result_json_v1   -> mimiqcircuits.QCSResults
 | `QISKIT_RESULT_JSON_V1` | `qiskit_result_json_v1` |
 | `CUDAQ_SAMPLE_RESULT_JSON_V1` | `cudaq_sample_result_json_v1` |
 | `MIMIQ_QCSR_JSON_V1` | `mimiq_qcsr_json_v1` |
+| `PERCEVAL_RESULT_JSON_V1` | `perceval_result_json_v1` |
 
 Current graph (read-back): `cirq_result_json_v1` → cirq/qiskit/mimiq ;
 `qiskit_result_json_v1` → qiskit/cirq/mimiq ;
 `cudaq_sample_result_json_v1` → cudaq/qiskit ;
-`mimiq_qcsr_json_v1` → mimiq/cirq/qiskit.
+`mimiq_qcsr_json_v1` → mimiq/cirq/qiskit ;
+`perceval_result_json_v1` → perceval (self, the only reader today).
 Completed by `UNSUPPORTED_CONVERSIONS` for the forbidden arcs
-(e.g. `to_cirq_result on cudaq_sample_result_json_v1`).
+(e.g. `to_cirq_result on cudaq_sample_result_json_v1`, `to_cirq_result on
+perceval_result_json_v1`).
 
 ## Flow of one edge
 
@@ -171,18 +175,33 @@ add(
 - **Read-back side**: call `add(...)` with `to_<sdk>_result` and
   `check_<sdk>`; implement `check_<sdk>` (exact counts + probes) and its
   `Probe`s (otherwise no metadata is verified).
-- SDKs are imported lazily inside the checks; on the `qio` side converters are
-  imported inside the methods, so no SDK is required at import time.
+- SDKs are imported lazily inside the checks and the converters (the
+  `*_to_dict` converters are resolved by `_LazyFn` on first call, never at
+  collection), so adding an SDK never changes what collection imports;
+  on the `qio` side converters are imported inside the methods, so no SDK is
+  required at import time.
+- **Perceval (photonic) leg — separate pytest invocation**: mimiqcircuits and
+  Perceval both register a `circuit.proto` in protobuf's global descriptor
+  pool, so they cannot be imported in the same Python process (either order).
+  The perceval leg (the `perceval.BSSamples -> perceval_result_json_v1 ->
+  perceval.BSSamples` edge and the `... on PERCEVAL_RESULT_JSON_V1` / 
+  `to_perceval_result on ...` negatives) is therefore selected with
+  `-k "perceval"` and runs in the perceval-only invocation; the main invocation
+  uses `-k "not perceval"`. Both use the exact same node ids, which always
+  contain `perceval` for this leg.
 
 ## Running
 
-`result_testing.py` inserts the repo root at the front of `sys.path`, so the
-battery runs from `tests/` without installing `qio`:
+`result_testing.py` itself imports no SDK, and the battery needs the repo root
+on `sys.path` when run from `tests/` (e.g. `PYTHONPATH=..` or installing the
+wheel), so the Perceval leg can be deselected without pulling mimiqcircuits:
 
 ```bash
 cd tests
-python -m pytest src/result_conversion/ -s --showprogress -vv
+PYTHONPATH=.. python -m pytest src/result_conversion/ -s --showprogress -vv -k "not perceval"
+PYTHONPATH=.. python -m pytest src/result_conversion/ -s --showprogress -vv -k "perceval"
 ```
 
-The `test-result-conv` target in the `tests/` Makefile does exactly this.
-Heavy SDKs (`qsimcirq`/`qiskit-aer`/`quantanium`) are not required here.
+The `test-result-conv` target in the `tests/` Makefile runs exactly these two
+invocations (mirroring the circuit battery). Heavy SDKs
+(`qsimcirq`/`qiskit-aer`/`quantanium`) are not required here.

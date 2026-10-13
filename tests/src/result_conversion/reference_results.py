@@ -17,7 +17,7 @@ Unlike the SDK tests (which simulate circuits at test time), each
 :class:`ReferenceResult` describes an **already executed** run as a static
 counts histogram (``counts``: ``{bitstring: count}``) plus a shot count. It is
 exposed identically in every SDK result representation - Cirq, Qiskit, CUDA-Q,
-MIMIQ - through a single generator ``get_reference_result``.
+MIMIQ, Perceval - through a single generator ``get_reference_result``.
 
 The bitstring convention is fixed across all SDK fixtures: bitstring character
 ``k`` (from the left, ``0``-indexed) is the measured value of qubit ``k`` on
@@ -239,6 +239,37 @@ class ReferenceResult:
             kwargs["zstates"] = [frozenbitarray(z) for z in self.zstates]
 
         return QCSResults(**kwargs)
+
+    # Perceval: a BSSamples (list of Fock states), one state per shot. Mode k of
+    # the Fock state is qubit k, so the bitstring convention of the battery is
+    # preserved exactly (``|b0,b1,...>`` <-> ``b0b1...``). Perceval is imported
+    # lazily: the perceval leg of the battery runs in the perceval-only pytest
+    # invocation (mimiqcircuits and Perceval's ``circuit.proto`` conflict).
+
+    def perceval(self) -> "pcvl.BSSamples":
+        import perceval as pcvl
+
+        samples = []
+        for bitstring, count in self.counts.items():
+            state = pcvl.BasicState(np.array([int(b) for b in bitstring]))
+            samples.extend([state] * count)
+        return pcvl.BSSamples(samples)
+
+    # Pulser: a ``pulser.backend.Results`` built straight from the counts
+    # histogram via ``from_final_bitstrings``. ``atom_order`` has one id per
+    # qubit (``q0, q1, ...``) and ``final_bitstrings`` keys are the battery's
+    # bitstrings bit-exact, matching the other SDK builders. Pulser does not
+    # conflict with mimiqcircuits (unlike Perceval), so this leg lives in the
+    # main pytest invocation.
+
+    def pulser(self) -> "pulser.backend.Results":
+        from pulser.backend import Results
+
+        return Results.from_final_bitstrings(
+            atom_order=tuple(f"q{k}" for k in range(self.n_qubits)),
+            total_duration=1000,
+            final_bitstrings=dict(self.counts),
+        )
 
 
 _RT2 = 0.7071067811865475
