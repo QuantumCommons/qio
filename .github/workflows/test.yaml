@@ -7,6 +7,19 @@ jobs:
 
     runs-on: ubuntu-latest
 
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: main
+            requirements: tests/requirements.txt
+            pytest-targets: tests/
+            pytest-select: '-k "not perceval"'
+          - name: perceval
+            requirements: tests/requirements-perceval.txt
+            pytest-targets: 'tests/src/circuit_conversion/ tests/src/result_conversion/'
+            pytest-select: '-k "perceval"'
+
     steps:
     - uses: actions/checkout@v4
 
@@ -33,11 +46,8 @@ jobs:
     - name: Install package
       run: pip install dist/qio-${version}-py3-none-any.whl
 
-    - name: Install test
-      run: pip install -r tests/requirements.txt
+    - name: Install test (${{ matrix.name }} battery)
+      run: pip install -r ${{ matrix.requirements }}
 
-    - name: Run test (main battery)
-      run: pytest -s --showprogress -vv tests/ -k "not perceval"
-
-    - name: Run test (photonic / perceval battery)
-      run: pytest -s --showprogress -vv tests/src/circuit_conversion/ tests/src/result_conversion/ -k "perceval"
+    - name: Run test (${{ matrix.name }} battery)
+      run: pytest -s --showprogress -vv ${{ matrix.pytest-targets }} ${{ matrix.pytest-select }}
