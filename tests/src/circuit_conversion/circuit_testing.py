@@ -11,14 +11,34 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Modular test helpers for the circuit conversion battery.
+"""Generic conversion-battery machinery, organized by programming paradigm.
 
 Design:
-- **One format checker per SDK / per serialization format** : ``check_cirq``,
-  ``check_qiskit``, ``check_cudaq``, ``check_mimiq``, ``check_program``,
-  ``check_qasm``, ``check_cirq_json``. Each validates the format of the object
-  and that its operation chain matches the reference specification
-  (``expected.gates``, a :class:`ReferenceCircuit`).
+- **Paradigm-abstract driver** : the abstract :class:`Paradigm` base hosts the
+  machinery every paradigm shares - the conversion pipeline (:class:`Step`,
+  :class:`Paradigm.ConversionEdge`, :meth:`Paradigm.convert`,
+  :meth:`Paradigm.run_path`), the equivalence oracles (``unitary``, ``counts``,
+  ``structural``, plus paradigm-specific ones registered in
+  :data:`EXTRA_ORACLES`), the loss-tracking report and the per-circuit run
+  filter (:meth:`Paradigm.circuit_runnable`). Concrete paradigms
+  (:class:`~gate_paradigm.GateParadigm`,
+  :class:`~analog_paradigm.AnalogParadigm`,
+  :class:`~photonic_paradigm.PhotonicParadigm`) live in sibling files and
+  provide their own reference circuits, edge builder, content checks, negative
+  cases and feature-coverage rows.
+- **Facade registries** : the module-level names the rest of the battery uses
+  (``build_edges``, ``run_path``, ``UNSUPPORTED_CONVERSIONS``,
+  ``CIRCUIT_FEATURE_COVERAGE``, ``REFERENCE_CIRCUITS``,
+  ``get_reference_circuit``, ``loss_report``, ...) aggregate every registered
+  paradigm, so adding a paradigm to ``:data:`PARADIGMS`` `` `` extends the whole
+  battery.
+- **One format checker per SDK / per serialization format** : the checks live
+  next to their paradigm (``check_cirq``/``check_qiskit``/``check_cudaq``/
+  ``check_mimiq``/``check_qasm``/``check_cirq_json`` in ``gate_paradigm``,
+  ``check_pulser``/``check_pulser_json`` in ``analog_paradigm``,
+  ``check_perceval``/``check_perceval_json`` in ``photonic_paradigm``). Each
+  validates the format of the object *and* that its operation chain matches the
+  reference specification (``expected.gates``, a :class:`ReferenceCircuit`).
 - **Operation-chain verification** : every intermediate (``QuantumProgram``
   QASM2/QASM3/CirqJSON content) and final SDK circuit is normalized to the
   canonical ``(gate, params, qubit_indices)`` form and compared against
@@ -37,12 +57,12 @@ Design:
   registers); instead any such deviation is *recorded* in the loss report as
   the declared ``cudaq_gate_decomposition`` loss, and the final SDK circuit is
   checked for qubit count (complete) + the ``unitary`` oracle (correct).
-- **Information-loss policy** : each :class:`ConversionEdge` declares the
-  losses inherent to its path (``known_losses``). The checks are exact-first:
-  any loss category that is *not* declared fails the test (regression), a
-  declared one is tolerated and recorded. ``loss_report()`` + the
-  ``conftest.py`` terminal summary surface the observed losses at the end of
-  the session.
+- **Information-loss policy** : each :class:`Paradigm.ConversionEdge` declares
+  the losses inherent to its path (``known_losses``). The checks are
+  exact-first: any loss category that is *not* declared fails the test
+  (regression), a declared one is tolerated and recorded.
+  ``loss_report()`` + the ``conftest.py`` terminal summary surface the observed
+  losses at the end of the session.
 - **Circuit-level information** : beyond the gate chain, the final SDK checks
   also track what survives of the circuit metadata - circuit name, global
   phase, Qiskit metadata dict, qubit topology (named/grid labels) and the
@@ -50,9 +70,10 @@ Design:
   CUDA-Q paths declare these as inherent ``known_losses``; CirqJSON is exact.
 - **Feature coverage** : :data:`CIRCUIT_FEATURE_COVERAGE` records which of the
   circuit features (qubit topology, classical control flow, metadata & global
-  phase, symbolic parameters, calibrations, measurement mapping) the battery
-  actually exercises. The ``conftest.py`` terminal summary prints it as a
-  matrix so the report states what it does and does not verify.
+  phase, symbolic parameters, calibrations, measurement mapping, photonic
+  mode-based circuits) the battery actually exercises. The ``conftest.py``
+  terminal summary prints it as a matrix so the report states what it does and
+  does not verify.
 - **Input circuits are NOT checked** : they are built statically and trusted
   (``ReferenceCircuit`` builders), so ``run_path`` converts them without any
   verification; only intermediate and final objects are checked.
@@ -60,14 +81,15 @@ Design:
   circuit and the conversion function to call as an argument, and runs the
   post-conversion checks. It is composed into multi-step pipelines by
   ``run_path``.
-- **Declarative registries** : ``build_edges()`` returns the full conversion
-  graph (SDK -> format -> SDK) as :class:`ConversionEdge` rows; adding a
-  conversion is adding one call. ``UNSUPPORTED_CONVERSIONS`` hosts the negative
-  cases.
+- **Declarative registries** : each paradigm's ``build_edges()`` returns its
+  conversion graph (SDK -> format -> SDK) as :class:`Paradigm.ConversionEdge`
+  rows; adding a conversion is adding one call. ``UNSUPPORTED_CONVERSIONS``
+  aggregates the negative cases of every paradigm.
 """
 
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from qio.core import (
     QuantumProgram,
@@ -75,209 +97,12 @@ from qio.core import (
     QuantumProgramSerializationFormat,
 )
 
-from reference_circuits import Param, ReferenceCircuit, get_reference_circuit
+from reference_circuits import ReferenceCircuit
 
 Compression = QuantumProgramCompressionFormat
 Serialization = QuantumProgramSerializationFormat
 NONE = Compression.NONE
 ZLIB = Compression.ZLIB_BASE64_V1
-
-
-# check format (one per SDK / serialization format)
-
-
-# Operation-chain normalization + comparison.
-#
-# Every checked object (intermediate content or final SDK circuit) is reduced
-# to the canonical ``Operation = (gate_name, params, qubit_indices)`` form and
-# compared against the reference specification (``expected.gates``).
-
-
-def _qubit_order(circuit) -> Dict[Any, int]:
-    """Qubit -> canonical index, ordered by label so the reference gate indices
-    (0..n-1) are independent of the qubit type (LineQubit, NamedQubit or
-    GridQubit)."""
-    return {q: i for i, q in enumerate(sorted(circuit.all_qubits(), key=str))}
-
-
-# Reversed reference mapping: cirq gate class (or ZPowGate exponent) -> name.
-_ROTATION_GATES = ("rx", "ry", "rz")
-
-_CIRQ_GATE_NAMES = {
-    "HPowGate": "h",
-    "_PauliX": "x",
-    "_PauliY": "y",
-    "_PauliZ": "z",
-    "CXPowGate": "cx",
-    "CZPowGate": "cz",
-    "Rx": "rx",
-    "Ry": "ry",
-    "Rz": "rz",
-}
-
-
-def _zpow_exponent_name(exponent: float) -> str:
-    for name, expect in (("s", 0.5), ("sdg", -0.5), ("t", 0.25), ("tdg", -0.25)):
-        if abs(exponent - expect) < 1e-12:
-            return name
-    return "z"
-
-
-def _cirq_gate_params(gate: Any) -> Tuple[Param, ...]:
-    import math
-
-    name = type(gate).__name__
-    if name in ("Rx", "Ry", "Rz"):
-        rads = getattr(gate, "_rads", None)
-        if rads is None:
-            rads = float(gate.exponent) * math.pi
-        if isinstance(rads, (int, float)):
-            return (float(rads),)
-        # Sympy symbol / symbolic expression: canonicalize to the same "~<name>"
-        # marker used by the reference circuit spec.
-        return (f"~{rads}",)
-    return ()
-
-
-def _cirq_topology(circuit) -> Tuple[str, ...]:
-    """Canonical qubit labels of a Cirq circuit, in reference index order."""
-    import cirq
-
-    order = _qubit_order(circuit)
-    labels = [None] * len(order)
-    for qubit, index in order.items():
-        if isinstance(qubit, cirq.LineQubit):
-            label = f"q{qubit.x}"
-        elif isinstance(qubit, cirq.GridQubit):
-            label = f"({qubit.row},{qubit.col})"
-        else:  # cirq.NamedQubit / subclasses
-            label = str(qubit)
-        labels[index] = label
-    return tuple(labels)
-
-
-def _cirq_gate_name(gate: Any) -> str:
-    name = type(gate).__name__
-    if name == "ZPowGate":
-        return _zpow_exponent_name(gate.exponent)
-    if name not in _CIRQ_GATE_NAMES:
-        raise AssertionError(f"unmapped cirq gate {name!r}")
-    return _CIRQ_GATE_NAMES[name]
-
-
-def _cirq_operations(circuit) -> List[Tuple[str, Tuple[Param, ...], Tuple[int, ...]]]:
-    import cirq
-
-    order = _qubit_order(circuit)
-    ops = []
-    for op in circuit.all_operations():
-        indices = tuple(order[q] for q in op.qubits)
-        if isinstance(op.gate, cirq.MeasurementGate):
-            # Split multi-qubit measurements into one canonical "measure" op
-            # per qubit so merged terminal measurements match the reference.
-            ops.extend(("measure", (), (i,)) for i in indices)
-            continue
-        ops.append((_cirq_gate_name(op.gate), _cirq_gate_params(op.gate), indices))
-    return ops
-
-
-def _qiskit_operations(qc) -> List[Tuple[str, Tuple[Param, ...], Tuple[int, ...]]]:
-    ops = []
-    for instr in qc.data:
-        operation = instr.operation
-        indices = tuple(qc.find_bit(q).index for q in instr.qubits)
-        if operation.name == "measure":
-            ops.append(("measure", (), indices))
-        else:
-            params = tuple(_param_marker(p) for p in operation.params)
-            ops.append((operation.name, params, indices))
-    return ops
-
-
-def _param_marker(param: Any) -> Param:
-    """Canonicalizes a gate parameter for the op-chain comparison: floats stay
-    floats, symbolic expressions (Qiskit Parameter / Sympy symbol) collapse to
-    the same "~<name>" marker used by the reference circuit spec."""
-    if isinstance(param, (int, float)):
-        return float(param)
-    return f"~{param}"
-
-
-_MIMIQ_GATE_NAMES = {
-    "GateH": "h",
-    "GateX": "x",
-    "GateY": "y",
-    "GateZ": "z",
-    "GateS": "s",
-    "GateSDG": "sdg",
-    "GateT": "t",
-    "GateTDG": "tdg",
-    "GateRX": "rx",
-    "GateRY": "ry",
-    "GateRZ": "rz",
-    "GateCX": "cx",
-    "GateCZ": "cz",
-    "Measure": "measure",
-}
-
-
-def _mimiq_operations(circuit) -> List[Tuple[str, Tuple[Param, ...], Tuple[int, ...]]]:
-    ops = []
-    for instr in circuit.instructions:
-        gate = instr.operation
-        name = type(gate).__name__
-        if name not in _MIMIQ_GATE_NAMES:
-            raise AssertionError(f"unmapped mimiq gate {name!r}")
-        name = _MIMIQ_GATE_NAMES[name]
-        indices = tuple(int(q) for q in instr.get_qubits())
-        if name == "measure":
-            ops.append(("measure", (), indices))
-        else:
-            params = (
-                tuple(float(p) for p in gate.getparams())
-                if name in _ROTATION_GATES
-                else ()
-            )
-            ops.append((name, params, indices))
-    return ops
-
-
-def _qasm_operations(
-    source: str, version: int
-) -> List[Tuple[str, Tuple[Param, ...], Tuple[int, ...]]]:
-    # Independent parsers (Qiskit's own), not the qio converters under test.
-    from qiskit import qasm2, qasm3
-
-    qc = qasm2.loads(source) if version == 2 else qasm3.loads(source)
-    return _qiskit_operations(qc)
-
-
-def _cirqjson_operations(
-    source: str,
-) -> List[Tuple[str, Tuple[Param, ...], Tuple[int, ...]]]:
-    import cirq
-
-    return _cirq_operations(cirq.read_json(json_text=source))
-
-
-def _params_close(
-    a: Tuple[Param, ...], b: Tuple[Param, ...], atol: float = 1e-6
-) -> bool:
-    import math
-
-    if len(a) != len(b):
-        return False
-    for x, y in zip(a, b):
-        if isinstance(x, str) or isinstance(y, str):
-            # Symbolic markers compare by identity ("~theta" == "~theta").
-            if x != y:
-                return False
-            continue
-        # Exact equality short-circuits; isclose covers the ~10-digit rounding
-        # introduced by ``cirq.to_qasm`` when it serializes rotation angles.
-        if not (x == y or math.isclose(x, y, rel_tol=atol, abs_tol=atol)):
-            return False
-    return True
 
 
 # Information-loss tracking (objectives: highlight inherent conversion losses,
@@ -328,6 +153,7 @@ def _info_and(*base: str) -> Tuple[str, ...]:
     always declared (QASM cannot carry name/phase/metadata/topology/mapping or
     rewrites the measurement mapping), plus the given ``base`` losses."""
     return QASM_CIRCUIT_INFO_LOSSES + tuple(base)
+
 
 _LOSS_DESCRIPTIONS = {
     LOSS_ROTATION_PRECISION: (
@@ -390,44 +216,11 @@ _LOSS_DESCRIPTIONS = {
 _LOSS_REPORT: Dict[str, Dict[str, Dict[str, Any]]] = {}
 _LOSS_CTX = {"id": None, "circuit": None, "known": frozenset()}
 
-
-def record_loss(category: str, detail: Optional[str] = None) -> None:
-    """Records a declared information loss - optionally with a concrete
-    ``detail`` of what was observed - or fails an undeclared one."""
-    if category not in _LOSS_CTX["known"]:
-        raise AssertionError(
-            f"undeclared information loss {category!r} on edge "
-            f"{_LOSS_CTX['id']!r} (circuit {_LOSS_CTX['circuit']!r}); declare it "
-            "in the edge's known_losses or fix the converter"
-        )
-    entry = _LOSS_REPORT.setdefault(_LOSS_CTX["id"], {}).setdefault(
-        category, {"circuits": set(), "observations": set()}
-    )
-    entry["circuits"].add(_LOSS_CTX["circuit"])
-    entry["observations"].add((_LOSS_CTX["circuit"], detail))
-
-
-def set_loss_context(edge: "ConversionEdge", circuit: ReferenceCircuit) -> None:
-    _LOSS_CTX["id"] = edge.id
-    _LOSS_CTX["circuit"] = circuit.name
-    _LOSS_CTX["known"] = frozenset(edge.known_losses)
-
-
-def loss_report() -> Dict[str, Dict[str, Dict[str, Any]]]:
-    """Session report: edge id -> {loss category: {circuits, observations}}."""
-    return _LOSS_REPORT
-
-
-def loss_description(category: str) -> str:
-    """Human-readable explanation of a loss category (used by the report)."""
-    return _LOSS_DESCRIPTIONS.get(category, "")
-
-
-# Feature coverage: which of the circuit-level information axes the battery
-# actually exercises, and how. Surfaced by the conftest terminal summary as a
-# matrix so the report states what it does / does not verify.
-# Status: "round-trip tested" | "tested as unsupported" | "not exercised".
-CIRCUIT_FEATURE_COVERAGE = (
+# Generic feature-coverage rows shared by every paradigm (they describe qio
+# circuit-level features as exercised on the gate network). Paradigm-specific
+# rows (analog pulses, photonic mode-based circuits) are contributed by the
+# paradigms themselves (see ``Paradigm.feature_coverage``).
+GENERIC_FEATURE_COVERAGE = (
     (
         "qubit topology & naming",
         "round-trip tested",
@@ -457,15 +250,6 @@ CIRCUIT_FEATURE_COVERAGE = (
         "so the parametrized circuit runs on the QASM3/CirqJSON edges only",
     ),
     (
-        "calibrations & pulse",
-        "partial (analog)",
-        "no Qiskit Pulse calibrations / QASM3 defcal support yet, but the "
-        "analog paradigm is exercised on the 'pulser->pulserjson->pulser' "
-        "edge: AnalogSpec (register coords, global/local channels, constant & "
-        "Blackman pulses, measurement) round trips exactly through the "
-        "Pulser abstract repr",
-    ),
-    (
         "measurement mapping & memory slots",
         "round-trip tested",
         "qubit->clbit assignment and Cirq measurement keys are compared "
@@ -475,48 +259,36 @@ CIRCUIT_FEATURE_COVERAGE = (
 )
 
 
-def check_operation_sequence(
-    actual: List[Tuple[str, Tuple[Param, ...], Tuple[int, ...]]],
-    expected_gates,
-    atol: float = 1e-6,
-) -> None:
-    """Exact-first operation-chain check against the reference gate list.
-
-    The gate chain (non-measurement operations) must match in order: names and
-    qubit indices exactly, rotation parameters exactly - a parameter deviation
-    that stays within ``atol`` is the ``rotation_precision`` loss (declare it
-    on edges serialized by Cirq), anything larger is a bug. ``measure`` ops
-    must form exactly the same multiset (commuting terminal measures, order
-    carries no information): any missing/extra measurement is a bug.
-    """
-    gate_actual = [op for op in actual if op[0] != "measure"]
-    gate_expected = [op for op in expected_gates if op[0] != "measure"]
-    assert len(gate_actual) == len(gate_expected), (
-        len(gate_actual),
-        len(gate_expected),
+def record_loss(category: str, detail: Optional[str] = None) -> None:
+    """Records a declared information loss - optionally with a concrete
+    ``detail`` of what was observed - or fails an undeclared one."""
+    if category not in _LOSS_CTX["known"]:
+        raise AssertionError(
+            f"undeclared information loss {category!r} on edge "
+            f"{_LOSS_CTX['id']!r} (circuit {_LOSS_CTX['circuit']!r}); declare it "
+            "in the edge's known_losses or fix the converter"
+        )
+    entry = _LOSS_REPORT.setdefault(_LOSS_CTX["id"], {}).setdefault(
+        category, {"circuits": set(), "observations": set()}
     )
-    for (name_a, params_a, indices_a), (name_b, params_b, indices_b) in zip(
-        gate_actual, gate_expected
-    ):
-        assert name_a == name_b, (name_a, name_b)
-        assert indices_a == indices_b, (indices_a, indices_b)
-        if params_a != params_b:
-            assert _params_close(params_a, params_b, atol), (
-                f"rotation parameters differ beyond tolerance: "
-                f"{params_a} vs {params_b}"
-            )
-            record_loss(
-                LOSS_ROTATION_PRECISION,
-                detail=(
-                    f"{name_a} on {indices_a}: "
-                    f"{tuple(round(float(p), 10) for p in params_a)} -> "
-                    f"{tuple(round(float(p), 10) for p in params_b)}"
-                ),
-            )
+    entry["circuits"].add(_LOSS_CTX["circuit"])
+    entry["observations"].add((_LOSS_CTX["circuit"], detail))
 
-    measure_actual = sorted(op for op in actual if op[0] == "measure")
-    measure_expected = sorted(op for op in expected_gates if op[0] == "measure")
-    assert measure_actual == measure_expected, (measure_actual, measure_expected)
+
+def set_loss_context(edge: "Paradigm.ConversionEdge", circuit: ReferenceCircuit) -> None:
+    _LOSS_CTX["id"] = edge.id
+    _LOSS_CTX["circuit"] = circuit.name
+    _LOSS_CTX["known"] = frozenset(edge.known_losses)
+
+
+def loss_report() -> Dict[str, Dict[str, Dict[str, Any]]]:
+    """Session report: edge id -> {loss category: {circuits, observations}}."""
+    return _LOSS_REPORT
+
+
+def loss_description(category: str) -> str:
+    """Human-readable explanation of a loss category (used by the report)."""
+    return _LOSS_DESCRIPTIONS.get(category, "")
 
 
 def _resolve_serialization(result) -> str:
@@ -529,144 +301,6 @@ def _resolve_serialization(result) -> str:
             source = zlib_to_str(source)
         return source
     return result
-
-
-# Circuit-level information checks (name, global phase, metadata, topology,
-# measurement mapping). Unlike the gate chain these are soft by design: any
-# deviation is recorded as the declared loss - OpenQASM genuinely cannot carry
-# them, so they are declared on the QASM/CUDA-Q edges and the report documents
-# exactly what a round trip drops. Only the classical-bit *count* is a hard
-# check (a conversion must never lose a measurement's storage).
-
-
-def _qiskit_measure_map(qc) -> Dict[int, int]:
-    """Measure statement as {qubit index -> classical-bit index}."""
-    mapping = {}
-    for instr in qc.data:
-        if instr.operation.name != "measure":
-            continue
-        qubit = qc.find_bit(instr.qubits[0]).index
-        clbit = qc.find_bit(instr.clbits[0]).index if instr.clbits else None
-        mapping[qubit] = clbit
-    return mapping
-
-
-def _expected_measure_keys(expected: ReferenceCircuit) -> Tuple[str, ...]:
-    """The measurement keys the canonical builders emit (``m<indices>``)."""
-    keys = sorted(
-        "m" + "".join(str(i) for i in indices)
-        for gate, _, indices in expected.gates
-        if gate == "measure"
-    )
-    return tuple(keys)
-
-
-def _check_qiskit_circuit_info(result, expected: ReferenceCircuit) -> None:
-    if expected.name and result.name != expected.name:
-        record_loss(
-            LOSS_CIRCUIT_NAME, detail=f"{expected.name!r} -> {result.name!r}"
-        )
-    phase = float(result.global_phase)
-    if abs(phase - expected.global_phase) > 1e-9:
-        record_loss(LOSS_GLOBAL_PHASE, detail=f"{expected.global_phase} -> {phase}")
-    if expected.metadata:
-        actual_meta = dict(result.metadata or {})
-        if actual_meta != dict(expected.metadata):
-            record_loss(
-                LOSS_CIRCUIT_METADATA, detail=f"{actual_meta} != {expected.metadata}"
-            )
-    measured = expected.measurement_indices()
-    if not measured:
-        return
-    # A conversion must preserve the classical storage: hard check.
-    assert result.num_clbits == len(measured), (result.num_clbits, len(measured))
-    mapping = _qiskit_measure_map(result)
-    expected_map = {i: i for i in measured}
-    if mapping != expected_map:
-        record_loss(
-            LOSS_MEASUREMENT_MAPPING,
-            detail=f"qubit->clbit {expected_map} -> {mapping}",
-        )
-
-
-def _check_cirq_circuit_info(result, expected: ReferenceCircuit) -> None:
-    if expected.qubit_scheme != "line":
-        labels = _cirq_topology(result)
-        expected_labels = expected.topology_labels()
-        if labels != expected_labels:
-            record_loss(
-                LOSS_QUBIT_TOPOLOGY,
-                detail=f"labels {expected_labels} -> {labels}",
-            )
-    if not expected.has_measurements():
-        return
-    keys = tuple(sorted(k.name for k in result.all_measurement_key_objs()))
-    expected_keys = _expected_measure_keys(expected)
-    if keys != expected_keys:
-        record_loss(
-            LOSS_MEASUREMENT_MAPPING,
-            detail=f"measurement keys {expected_keys} -> {keys}",
-        )
-
-
-def check_cirq(result, expected: Optional[ReferenceCircuit] = None) -> None:
-    import cirq
-
-    assert isinstance(
-        result, cirq.Circuit
-    ), f"expected cirq.Circuit, got {type(result)}"
-    if expected is not None:
-        assert len(result.all_qubits()) == expected.n_qubits, (
-            len(result.all_qubits()),
-            expected.n_qubits,
-        )
-        check_operation_sequence(_cirq_operations(result), expected.gates)
-        _check_cirq_circuit_info(result, expected)
-
-
-def check_qiskit(result, expected: Optional[ReferenceCircuit] = None) -> None:
-    """Strict check for a *created* Qiskit circuit: qubit count and the full
-    operation sequence must match the reference specification, and the
-    circuit-level information (name/global phase/metadata/measure mapping) is
-    compared as recorded (declared) losses - QASM round trips are known to
-    regenerate the name and drop phase/metadata."""
-    from qiskit import QuantumCircuit
-
-    assert isinstance(
-        result, QuantumCircuit
-    ), f"expected QuantumCircuit, got {type(result)}"
-    if expected is not None:
-        assert result.num_qubits == expected.n_qubits, (
-            result.num_qubits,
-            expected.n_qubits,
-        )
-        check_operation_sequence(_qiskit_operations(result), expected.gates)
-        _check_qiskit_circuit_info(result, expected)
-
-
-def check_cudaq(result, expected: Optional[ReferenceCircuit] = None) -> None:
-    # A CUDA-Q kernel cannot be introspected without executing it, so the
-    # kernel is only asserted to exist here. Its behavior is validated *around*
-    # the leg instead: by the "counts" oracle on the direct paths, or by the
-    # end-of-chain SDK circuit (qubit count + ``unitary`` oracle) on the
-    # no-execution round-trip loops (see ``add_cudaq_loop``).
-    assert result is not None, "CUDA-Q kernel is None"
-
-
-def check_mimiq(result, expected: Optional[ReferenceCircuit] = None) -> None:
-    import mimiqcircuits
-
-    assert result is not None, "MIMIQ circuit is None"
-    assert isinstance(
-        result, mimiqcircuits.Circuit
-    ), f"expected mimiq Circuit, got {type(result)}"
-    num_qubits = getattr(result, "num_qubits", None)
-    if callable(num_qubits):
-        num_qubits = num_qubits()
-    if expected is not None and num_qubits is not None:
-        assert num_qubits == expected.n_qubits, (num_qubits, expected.n_qubits)
-    if expected is not None:
-        check_operation_sequence(_mimiq_operations(result), expected.gates)
 
 
 def check_program(serialization_format: Serialization) -> Callable:
@@ -684,187 +318,9 @@ def check_program(serialization_format: Serialization) -> Callable:
     return _check
 
 
-def check_qasm(version: int) -> Callable:
-    """Validates the serialized OpenQASM ``version`` (2 or 3) content: it must
-    parse, declare the right qubit count and reproduce the reference operation
-    chain."""
-
-    def _check(result, expected: Optional[ReferenceCircuit] = None) -> None:
-        source = _resolve_serialization(result)
-        assert source, "empty QASM string"
-        num_qubits = _qasm_num_qubits(source, version)
-        if expected is not None:
-            assert num_qubits == expected.n_qubits, (num_qubits, expected.n_qubits)
-            check_operation_sequence(_qasm_operations(source, version), expected.gates)
-
-    return _check
-
-
-def check_qasm_cudaq_documented(version: int) -> Callable:
-    """Content check for the OpenQASM ``version`` re-emitted after a CUDA-Q leg.
-
-    The source must parse and declare the right qubit count (hard failures).
-    The exact operation chain is then compared, but *any* deviation is recorded
-    as the declared :data:`LOSS_CUDAQ_GATE_DECOMPOSITION` loss - with the
-    concrete deviation as detail - instead of failing the test: CUDA-Q owns the
-    gate basis when re-emitting OpenQASM 2 (``cz -> h+cx+h``, ``s/t -> rz/rx``
-    sequences, per-qubit classical registers). Semantic correctness is
-    guaranteed by the ``unitary`` oracle closing every cudaq loop.
-    """
-
-    def _check(result, expected: Optional[ReferenceCircuit] = None) -> None:
-        source = _resolve_serialization(result)
-        assert source, "empty QASM string"
-        num_qubits = _qasm_num_qubits(source, version)
-        if expected is not None:
-            assert num_qubits == expected.n_qubits, (num_qubits, expected.n_qubits)
-            try:
-                check_operation_sequence(
-                    _qasm_operations(source, version), expected.gates
-                )
-            except AssertionError as exc:
-                record_loss(
-                    LOSS_CUDAQ_GATE_DECOMPOSITION,
-                    detail=f"op chain deviation: {exc}",
-                )
-
-    return _check
-
-
-def check_cirq_light(result, expected: Optional[ReferenceCircuit] = None) -> None:
-    """Lenient cirq check: instance + declared qubit count + circuit-level
-    information. Used on the final SDK of the cudaq loops: the cudaq leg's
-    structure is already documented by ``check_qasm_cudaq_documented`` on the
-    re-emitted QASM2, so the op chain is not re-checked here, but the
-    circuit-level information losses still belong in the report."""
-    import cirq
-
-    assert isinstance(result, cirq.Circuit), f"expected cirq.Circuit, got {type(result)}"
-    if expected is not None:
-        assert len(result.all_qubits()) == expected.n_qubits, (
-            len(result.all_qubits()),
-            expected.n_qubits,
-        )
-        _check_cirq_circuit_info(result, expected)
-
-
-def check_qiskit_light(result, expected: Optional[ReferenceCircuit] = None) -> None:
-    """Lenient qiskit check: instance + declared qubit count + circuit-level
-    information. Used on the final SDK of the cudaq loops (see
-    ``check_cirq_light``)."""
-    from qiskit import QuantumCircuit
-
-    assert isinstance(
-        result, QuantumCircuit
-    ), f"expected QuantumCircuit, got {type(result)}"
-    if expected is not None:
-        assert result.num_qubits == expected.n_qubits, (
-            result.num_qubits,
-            expected.n_qubits,
-        )
-        _check_qiskit_circuit_info(result, expected)
-
-
-def check_cirq_json(result, expected: Optional[ReferenceCircuit] = None) -> None:
-    import cirq
-
-    source = _resolve_serialization(result)
-    assert source, "empty Cirq JSON"
-    circuit = cirq.read_json(json_text=source)
-    assert isinstance(circuit, cirq.Circuit), type(circuit)
-    if expected is not None:
-        assert len(circuit.all_qubits()) == expected.n_qubits, (
-            len(circuit.all_qubits()),
-            expected.n_qubits,
-        )
-        check_operation_sequence(_cirq_operations(circuit), expected.gates)
-        _check_cirq_circuit_info(circuit, expected)
-
-
-def check_pulser(result, expected: Optional[ReferenceCircuit] = None) -> None:
-    """Validates an analog Pulser ``Sequence`` against the reference
-    :class:`AnalogSpec`.
-
-    A Pulser sequence has no gate chain nor a cheaply-computable unitary, so
-    the semantic invariant is Pulser's own canonical, device-independent
-    serialization: ``Sequence.to_abstract_repr``. The check is therefore:
-    instance, atom count, declared channels, measurement presence and device
-    equality (public API), plus exact equality with the *statically built*
-    reference sequence's abstract representation - the analog counterpart of
-    the gate op-chain comparison, and exact because the Pulser round trip is
-    lossless. The ``analog_device`` loss guards the device object only (pulser
-    1.9.1 preserves it; a future version dropping it is recorded, not fatal).
-    """
-    import pulser
-
-    assert isinstance(result, pulser.Sequence), f"expected pulser.Sequence, got {type(result)}"
-    if expected is None or expected.paradigm != "analog":
-        return
-    spec = expected.analog
-    assert spec is not None, f"no analog spec on {expected.name!r}"
-    assert len(result.register.qubits) == expected.n_qubits, (
-        len(result.register.qubits),
-        expected.n_qubits,
-    )
-    assert set(result.declared_channels) == set(spec.channels), (
-        set(result.declared_channels),
-        set(spec.channels),
-    )
-    assert bool(getattr(result, "_measurement", None)) == spec.measure, (
-        getattr(result, "_measurement", None),
-        spec.measure,
-    )
-    reference_seq = expected.pulser()
-    if result.device != reference_seq.device:
-        record_loss(
-            LOSS_ANALOG_DEVICE,
-            detail=(
-                f"{reference_seq.device.name} -> {result.device.name} "
-                f"(device not preserved by the abstract repr round trip)"
-            ),
-        )
-    assert result.to_abstract_repr() == reference_seq.to_abstract_repr()
-
-
-def check_pulser_json(result, expected: Optional[ReferenceCircuit] = None) -> None:
-    """Content check of the ``PULSER_SEQUENCE_JSON_V1`` intermediate: it must
-    be a valid ``Sequence`` abstract repr (parses, right atom count) and
-    re-serialize identically - Pulser's abstract repr is canonical."""
-    import pulser
-
-    source = _resolve_serialization(result)
-    assert source, "empty Pulser abstract repr"
-    sequence = pulser.Sequence.from_abstract_repr(source)
-    assert isinstance(sequence, pulser.Sequence), type(sequence)
-    if expected is not None:
-        assert len(sequence.register.qubits) == expected.n_qubits, (
-            len(sequence.register.qubits),
-            expected.n_qubits,
-        )
-    assert sequence.to_abstract_repr() == source
-
-
-def _qasm_num_qubits(source: str, version: int) -> int:
-    if version == 2:
-        from qiskit import qasm2
-
-        return qasm2.loads(source).num_qubits
-
-    import openqasm3
-    from openqasm3 import ast
-
-    program = openqasm3.parse(source)
-    num_qubits = 0
-    for statement in program.statements:
-        if isinstance(statement, ast.QubitDeclaration):
-            magnitude = getattr(statement.size, "value", None)
-            num_qubits += int(magnitude) if magnitude is not None else 1
-    if num_qubits == 0:
-        raise AssertionError(f"no qubit declaration found in QASM {version}")
-    return num_qubits
-
-
-# Equivalence oracles
+# Equivalence oracles (generic: they only rely on the final SDK object and the
+# reference circuit). Paradigm-specific oracles (e.g. the photonic SLOS
+# simulation) register into ``EXTRA_ORACLES``.
 
 
 def _cirq_unitary(circuit) -> Any:
@@ -901,17 +357,6 @@ def _reverse_bit_order(matrix) -> Any:
     return arr[np.ix_(permutation, permutation)]
 
 
-def assert_unitaries_close(reference, actual) -> None:
-    """Asserts two circuit unitaries are equal up to a global phase. Uses a
-    bit-reversal fallback so Cirq- and Qiskit-ordered matrices are compared
-    consistently."""
-    if _unit_close(reference, actual):
-        return
-    if _unit_close(reference, _reverse_bit_order(actual)):
-        return
-    raise AssertionError("converted circuit unitary differs from the reference")
-
-
 def _unit_close(reference, actual, atol: float = 1e-8) -> bool:
     import numpy as np
 
@@ -926,6 +371,17 @@ def _unit_close(reference, actual, atol: float = 1e-8) -> bool:
     return bool(np.allclose(phase * ref, act, atol=atol, rtol=1e-6))
 
 
+def assert_unitaries_close(reference, actual) -> None:
+    """Asserts two circuit unitaries are equal up to a global phase. Uses a
+    bit-reversal fallback so Cirq- and Qiskit-ordered matrices are compared
+    consistently."""
+    if _unit_close(reference, actual):
+        return
+    if _unit_close(reference, _reverse_bit_order(actual)):
+        return
+    raise AssertionError("converted circuit unitary differs from the reference")
+
+
 def assert_counts(kernel, expected: ReferenceCircuit) -> None:
     import cudaq
 
@@ -933,65 +389,6 @@ def assert_counts(kernel, expected: ReferenceCircuit) -> None:
     counts = dict(cudaq.sample(kernel, shots_count=500).items())
     actual_keys = set(counts.keys())
     assert actual_keys == set(expected.expected_counts.keys()), (actual_keys, expected)
-
-
-# Generic driver + pipeline
-
-
-@dataclass(frozen=True)
-class Step:
-    fn: Callable
-    kwargs: Dict[str, Any] = field(default_factory=dict)
-    checks: Tuple[Callable, ...] = ()
-
-
-@dataclass(frozen=True)
-class ConversionEdge:
-    id: str
-    input_fn: Callable[[ReferenceCircuit], Any]
-    steps: Tuple[Step, ...]
-    oracle: str = "unitary"  # "unitary" | "counts" | "structural"
-    known_losses: Tuple[str, ...] = ()  # inherent information losses of the path
-    paradigm: str = "gate"  # programming paradigm the edge operates on
-
-
-def convert(circuit, converter, *args, checks=(), expected=None, **kwargs) -> Any:
-    """Generic conversion driver.
-
-    Args:
-        circuit: the input circuit (statically built and trusted - not checked).
-        converter: the conversion function to call (e.g. ``QuantumProgram.from_*_circuit``).
-        checks: post-conversion verifications, each ``check(result, expected)``.
-        expected: known information (a ReferenceCircuit) checks are validated against.
-    """
-    assert circuit is not None, "input circuit is required"
-    result = converter(circuit, *args, **kwargs)
-    for check in checks:
-        check(result, expected)
-    return result
-
-
-def run_path(edge: ConversionEdge, circuit: ReferenceCircuit) -> Any:
-    """Runs a full conversion path (input -> steps) and applies its oracle."""
-    set_loss_context(edge, circuit)
-    current = edge.input_fn(circuit)
-    for step in edge.steps:
-        current = convert(
-            current, step.fn, expected=circuit, checks=step.checks, **step.kwargs
-        )
-
-    oracle = circuit.oracle or edge.oracle
-    if oracle == "unitary":
-        actual = _to_unitary(current)
-        assert_unitaries_close(_cirq_unitary(circuit.cirq()), actual)
-    elif oracle == "counts":
-        assert_counts(current, circuit)
-    elif oracle == "structural":
-        # structural checks were already run by the steps
-        pass
-    else:
-        raise ValueError(f"unknown oracle: {oracle}")
-    return current
 
 
 def _to_unitary(circuit) -> Any:
@@ -1005,438 +402,199 @@ def _to_unitary(circuit) -> Any:
     raise TypeError(f"cannot extract unitary from {type(circuit)}")
 
 
-# Declarative registries
-
-INPUT_FNS = {
-    "cirq": lambda c: c.cirq(),
-    "qiskit": lambda c: c.qiskit(),
-    "pulser": lambda c: c.pulser(),
-}
-
-# Programming paradigm each input SDK belongs to: a circuit only runs on edges
-# of its own paradigm (see ``ReferenceCircuit.supports_edge``).
-INPUT_PARADIGMS = {
-    "cirq": "gate",
-    "qiskit": "gate",
-    "pulser": "analog",
-}
+# Paradigm-specific equivalence oracles (name -> callable(current, expected)).
+# Registered by the paradigm modules at import time.
+EXTRA_ORACLES: Dict[str, Callable[[Any, ReferenceCircuit], None]] = {}
 
 
-def build_edges(compression: Compression) -> Tuple[ConversionEdge, ...]:
-    """Builds the conversion graph (SDK -> format -> SDK) for one compression.
-    Intermediate content checks are performed for both ``NONE`` and ``ZLIB``
-    (the serialization is decompressed before parsing)."""
-    producer = QuantumProgram.from_cirq_circuit
-    edges = []
+class Paradigm(ABC):
+    """Abstract base of a programming paradigm of the conversion battery.
 
-    def register(
-        edge_id: str,
-        input_kind: str,
-        steps: Sequence[Step],
-        oracle: str = "unitary",
-        known_losses: Tuple[str, ...] = (),
-    ) -> None:
-        edges.append(
-            ConversionEdge(
-                edge_id,
-                INPUT_FNS[input_kind],
-                tuple(steps),
-                oracle=oracle,
-                known_losses=known_losses,
-                paradigm=INPUT_PARADIGMS[input_kind],
-            )
-        )
+    It hosts the *generic* machinery: the conversion pipeline
+    (:class:`Step`, :class:`Paradigm.ConversionEdge`, :meth:`convert`,
+    :meth:`run_path`), the equivalence oracles, the content-check registry hook
+    and the per-circuit run filter. Concrete paradigms implement
+    :meth:`build_edges` and provide their own circuits, input builders,
+    negative cases and feature-coverage rows.
+    """
 
-    def add(
-        edge_id: str,
-        input_kind: str,
-        write_fn: Callable,
-        fmt: Serialization,
-        read_fn: Optional[Callable] = None,
-        read_check: Optional[Callable] = None,
-        oracle: str = "unitary",
-        known_losses: Tuple[str, ...] = (),
-    ) -> None:
-        checks = (check_program(fmt),) + _format_content_checks(fmt)
-        steps = [
-            Step(
-                write_fn,
-                {"dest_format": fmt, "compression_format": compression},
-                checks,
-            )
-        ]
-        if read_fn is not None:
-            steps.append(Step(read_fn, {}, (read_check,)))
-        register(edge_id, input_kind, steps, oracle, known_losses)
+    name: str = ""
+    circuits: Tuple[ReferenceCircuit, ...] = ()
+    input_fns: Dict[str, Callable[[ReferenceCircuit], Any]] = {}
+    unsupported_conversions: Tuple[Tuple[str, Callable], ...] = ()
+    feature_coverage: Tuple[Tuple[str, str, str], ...] = ()
 
-    def add_cudaq_loop(
-        edge_id_base: str,
-        input_kind: str,
-        write_fn: Callable,
-        write_fmt: Serialization,
-        known_losses: Tuple[str, ...] = (),
-    ) -> None:
-        """Registers a no-execution cudaq round trip back to each SDK:
-        ``input -> qasm(write_fmt) -> cudaq kernel -> qasm2 -> {cirq, qiskit}``.
+    @dataclass(frozen=True)
+    class ConversionEdge:
+        """One row of the conversion graph: ``input -> steps``.
 
-        A CUDA-Q kernel cannot be introspected without executing it
-        (``check_cudaq`` stays a mere existence check), so the information is
-        verified *around* the leg: the input serialization is checked exactly
-        (``write_checks``, before CUDA-Q sees it), then the re-emitted QASM2 is
-        checked by :func:`check_qasm_cudaq_documented` - any gate-basis rewrite
-        CUDA-Q performs (``cz -> h+cx+h``, ``s/t -> rz/rx``) is *recorded* in
-        the loss report as a declared :data:`LOSS_CUDAQ_GATE_DECOMPOSITION`
-        loss instead of failing, and the end-of-chain SDK circuit is only
-        required to declare the right qubit count (complete). Semantic
-        correctness is enforced by the ``unitary`` oracle that closes the loop:
-        a drop or alteration of a gate would change the unitary and fail.
+        ``input_kind`` names the SDK the input circuit is built for (used to
+        look up the input builder); ``paradigm`` is the programming paradigm
+        owning the edge (the circuit only runs on edges of its own paradigm).
         """
-        write_checks = (check_program(write_fmt),) + _format_content_checks(write_fmt)
-        back_checks = (
-            check_program(Serialization.QASM_V2),
-            check_qasm_cudaq_documented(2),
-        )
-        terminal_converters = {
-            "cirq": QuantumProgram.to_cirq_circuit,
-            "qiskit": QuantumProgram.to_qiskit_circuit,
-        }
-        terminal_checks = {
-            "cirq": check_cirq_light,
-            "qiskit": check_qiskit_light,
-        }
-        for terminal in ("cirq", "qiskit"):
-            steps = [
-                Step(
-                    write_fn,
-                    {"dest_format": write_fmt, "compression_format": compression},
-                    write_checks,
-                ),
-                Step(QuantumProgram.to_cudaq_kernel, {}, (check_cudaq,)),
-                Step(
-                    QuantumProgram.from_cudaq_kernel,
-                    {
-                        "dest_format": Serialization.QASM_V2,
-                        "compression_format": compression,
-                    },
-                    back_checks,
-                ),
-                Step(
-                    terminal_converters[terminal],
-                    {},
-                    (terminal_checks[terminal],),
-                ),
-            ]
-            register(
-                f"{edge_id_base}->{terminal}",
-                input_kind,
-                steps,
-                oracle="unitary",
-                known_losses=known_losses,
+
+        id: str
+        input_kind: str
+        input_fn: Callable[[ReferenceCircuit], Any]
+        steps: Tuple["Paradigm.Step", ...]
+        oracle: str = "unitary"  # "unitary" | "counts" | "structural" | <paradigm-specific>
+        known_losses: Tuple[str, ...] = ()  # inherent information losses of the path
+        paradigm: str = "gate"  # programming paradigm the edge operates on
+
+    @dataclass(frozen=True)
+    class Step:
+        fn: Callable
+        kwargs: Dict[str, Any] = field(default_factory=dict)
+        checks: Tuple[Callable, ...] = ()
+
+    @staticmethod
+    def convert(circuit, converter, *args, checks=(), expected=None, **kwargs) -> Any:
+        """Generic conversion driver.
+
+        Args:
+            circuit: the input circuit (statically built and trusted - not checked).
+            converter: the conversion function to call (e.g. ``QuantumProgram.from_*_circuit``).
+            checks: post-conversion verifications, each ``check(result, expected)``.
+            expected: known information (a ReferenceCircuit) checks are validated against.
+        """
+        assert circuit is not None, "input circuit is required"
+        result = converter(circuit, *args, **kwargs)
+        for check in checks:
+            check(result, expected)
+        return result
+
+    @abstractmethod
+    def build_edges(self, compression: Compression) -> Tuple["Paradigm.ConversionEdge", ...]:
+        """Builds this paradigm's conversion graph (SDK -> format -> SDK) for
+        one compression. Intermediate content checks are performed for both
+        ``NONE`` and ``ZLIB`` (the serialization is decompressed before
+        parsing)."""
+
+    def content_checks(self, fmt: Serialization) -> Tuple[Callable, ...]:
+        """Content checkers of the intermediate serialization ``fmt``."""
+        return ()
+
+    def run_oracle(self, oracle: str, current: Any, circuit: ReferenceCircuit) -> None:
+        """Applies the equivalence oracle of the edge/circuit on the final
+        object ``current`` of the conversion path."""
+        if oracle == "unitary":
+            actual = _to_unitary(current)
+            assert_unitaries_close(_cirq_unitary(circuit.cirq()), actual)
+        elif oracle == "counts":
+            assert_counts(current, circuit)
+        elif oracle == "structural":
+            # structural checks were already run by the steps
+            pass
+        else:
+            fn = EXTRA_ORACLES.get(oracle)
+            if fn is None:
+                raise ValueError(f"unknown oracle: {oracle}")
+            fn(current, circuit)
+
+    def run_path(self, edge: "Paradigm.ConversionEdge", circuit: ReferenceCircuit) -> Any:
+        """Runs a full conversion path (input -> steps) and applies its oracle."""
+        set_loss_context(edge, circuit)
+        current = edge.input_fn(circuit)
+        for step in edge.steps:
+            current = self.convert(
+                current, step.fn, expected=circuit, checks=step.checks, **step.kwargs
             )
+        self.run_oracle(circuit.oracle or edge.oracle, current, circuit)
+        return current
 
-    add(
-        "cirq->qasm2->cirq",
-        "cirq",
-        producer,
-        Serialization.QASM_V2,
-        QuantumProgram.to_cirq_circuit,
-        check_cirq,
-        known_losses=_info_and(LOSS_ROTATION_PRECISION),
-    )
-    add(
-        "cirq->qasm3->cirq",
-        "cirq",
-        producer,
-        Serialization.QASM_V3,
-        QuantumProgram.to_cirq_circuit,
-        check_cirq,
-        known_losses=_info_and(LOSS_ROTATION_PRECISION),
-    )
-    add(
-        "cirq->cirqjson->cirq",
-        "cirq",
-        producer,
-        Serialization.CIRQ_CIRCUIT_JSON_V1,
-        QuantumProgram.to_cirq_circuit,
-        check_cirq,
-    )
-    add(
-        "cirq->qasm2->qiskit",
-        "cirq",
-        producer,
-        Serialization.QASM_V2,
-        QuantumProgram.to_qiskit_circuit,
-        check_qiskit,
-        known_losses=_info_and(LOSS_ROTATION_PRECISION),
-    )
-    add(
-        "cirq->qasm3->qiskit",
-        "cirq",
-        producer,
-        Serialization.QASM_V3,
-        QuantumProgram.to_qiskit_circuit,
-        check_qiskit,
-        known_losses=_info_and(LOSS_ROTATION_PRECISION),
-    )
-    add(
-        "cirq->qasm3->cudaq",
-        "cirq",
-        producer,
-        Serialization.QASM_V3,
-        QuantumProgram.to_cudaq_kernel,
-        check_cudaq,
-        oracle="counts",
-        known_losses=(LOSS_ROTATION_PRECISION,),
-    )
-    add(
-        "cirq->qasm2->mimiq",
-        "cirq",
-        producer,
-        Serialization.QASM_V2,
-        QuantumProgram.to_mimiq_circuit,
-        check_mimiq,
-        oracle="structural",
-        known_losses=(LOSS_ROTATION_PRECISION,),
-    )
-    # cudaq round trips without execution: cudaq -> qasm2 -> {cirq, qiskit}
-    # closes on the unitary oracle, so no simulation is needed to check for
-    # losses (see ``add_cudaq_loop``). The declared losses are inherent to the
-    # cudaq leg: Cirq truncates rotation angles on write, CUDA-Q rewrites the
-    # gate basis on re-emission, and the circuit-info losses come from both the
-    # QASM serializations and the per-qubit creg split.
-    add_cudaq_loop(
-        "cirq->qasm2->cudaq->qasm2",
-        "cirq",
-        producer,
-        Serialization.QASM_V2,
-        known_losses=_info_and(
-            LOSS_ROTATION_PRECISION, LOSS_CUDAQ_GATE_DECOMPOSITION
-        ),
-    )
-    add_cudaq_loop(
-        "cirq->qasm3->cudaq->qasm2",
-        "cirq",
-        producer,
-        Serialization.QASM_V3,
-        known_losses=_info_and(
-            LOSS_ROTATION_PRECISION, LOSS_CUDAQ_GATE_DECOMPOSITION
-        ),
-    )
+    def circuit_runnable(self, circuit: ReferenceCircuit, edge: "Paradigm.ConversionEdge") -> bool:
+        """Whether the circuit runs on the edge: same paradigm (and the edge is
+        not excluded by ``supported_edge_ids``) and - for "counts" edges - the
+        circuit has known expected counts."""
+        if not circuit.supports_edge(edge):
+            return False
+        oracle = circuit.oracle or edge.oracle
+        if oracle == "counts" and circuit.expected_counts is None:
+            return False
+        return True
 
-    producer = QuantumProgram.from_qiskit_circuit
-    add(
-        "qiskit->qasm2->qiskit",
-        "qiskit",
-        producer,
-        Serialization.QASM_V2,
-        QuantumProgram.to_qiskit_circuit,
-        check_qiskit,
-        known_losses=_info_and(),
-    )
-    add(
-        "qiskit->qasm3->qiskit",
-        "qiskit",
-        producer,
-        Serialization.QASM_V3,
-        QuantumProgram.to_qiskit_circuit,
-        check_qiskit,
-        known_losses=_info_and(),
-    )
-    add(
-        "qiskit->qasm2->cirq",
-        "qiskit",
-        producer,
-        Serialization.QASM_V2,
-        QuantumProgram.to_cirq_circuit,
-        check_cirq,
-        known_losses=_info_and(),
-    )
-    add(
-        "qiskit->qasm3->cirq",
-        "qiskit",
-        producer,
-        Serialization.QASM_V3,
-        QuantumProgram.to_cirq_circuit,
-        check_cirq,
-        known_losses=_info_and(),
-    )
-    add(
-        "qiskit->qasm3->cudaq",
-        "qiskit",
-        producer,
-        Serialization.QASM_V3,
-        QuantumProgram.to_cudaq_kernel,
-        check_cudaq,
-        oracle="counts",
-    )
-    add(
-        "qiskit->qasm2->cudaq",
-        "qiskit",
-        producer,
-        Serialization.QASM_V2,
-        QuantumProgram.to_cudaq_kernel,
-        check_cudaq,
-        oracle="counts",
-    )
-    add(
-        "qiskit->qasm2->mimiq",
-        "qiskit",
-        producer,
-        Serialization.QASM_V2,
-        QuantumProgram.to_mimiq_circuit,
-        check_mimiq,
-        oracle="structural",
-    )
-    add_cudaq_loop(
-        "qiskit->qasm2->cudaq->qasm2",
-        "qiskit",
-        producer,
-        Serialization.QASM_V2,
-        known_losses=_info_and(
-            LOSS_ROTATION_PRECISION, LOSS_CUDAQ_GATE_DECOMPOSITION
-        ),
-    )
-    add_cudaq_loop(
-        "qiskit->qasm3->cudaq->qasm2",
-        "qiskit",
-        producer,
-        Serialization.QASM_V3,
-        known_losses=_info_and(
-            LOSS_ROTATION_PRECISION, LOSS_CUDAQ_GATE_DECOMPOSITION
-        ),
-    )
+    def __repr__(self) -> str:
+        return f"<{type(self).__name__} paradigm={self.name!r}>"
 
-    # Analog paradigm: Pulser Sequence <-> Pulser Sequence JSON (PULSER).
-    # There is no cheap unitary for a pulser sequence, so the edge closes on
-    # the "structural" oracle; semantic correctness is enforced by
-    # ``check_pulser`` (exact abstract-repr equality with the reference spec)
-    # and ``check_pulser_json`` on the intermediate. The Pulser round trip is
-    # lossless at the checked level - except the device, preserved with pulser
-    # 1.9.1 / reference devices but declared as ``analog_device`` as a guard in
-    # case a future version drops it (it would then be recorded, not fail).
-    producer = QuantumProgram.from_pulser_sequence
-    add(
-        "pulser->pulserjson->pulser",
-        "pulser",
-        producer,
-        Serialization.PULSER_SEQUENCE_JSON_V1,
-        QuantumProgram.to_pulser_sequence,
-        check_pulser,
-        oracle="structural",
-        known_losses=(LOSS_ANALOG_DEVICE,),
-    )
 
+# Facade / registries -----------------------------------------------------
+# Aggregated from the concrete paradigms (populated at the bottom of the
+# module, after the paradigm modules are imported).
+
+PARADIGMS: List[Paradigm] = []
+PARADIGM_BY_NAME: Dict[str, Paradigm] = {}
+
+
+def build_edges(compression: Compression) -> Tuple[Paradigm.ConversionEdge, ...]:
+    """Builds the full conversion graph (every paradigm, SDK -> format -> SDK)
+    for one compression."""
+    edges: List[Paradigm.ConversionEdge] = []
+    for paradigm in PARADIGMS:
+        edges.extend(paradigm.build_edges(compression))
     return tuple(edges)
 
 
-def _format_content_checks(fmt: Serialization) -> Tuple[Callable, ...]:
-    if fmt in (Serialization.QASM_V2,):
-        return (check_qasm(2),)
-    if fmt in (Serialization.QASM_V3,):
-        return (check_qasm(3),)
-    if fmt in (Serialization.CIRQ_CIRCUIT_JSON_V1,):
-        return (check_cirq_json,)
-    if fmt in (Serialization.PULSER_SEQUENCE_JSON_V1,):
-        return (check_pulser_json,)
-    return ()
+def run_path(edge: Paradigm.ConversionEdge, circuit: ReferenceCircuit) -> Any:
+    """Runs a full conversion path, dispatching to the edge's paradigm."""
+    paradigm = PARADIGM_BY_NAME.get(edge.paradigm)
+    if paradigm is None:
+        raise ValueError(
+            f"no registered paradigm for edge {edge.id!r} (paradigm {edge.paradigm!r})"
+        )
+    return paradigm.run_path(edge, circuit)
 
 
-# Negative/edge cases: each entry is (id, callable) and must raise an Exception.
-def _bell_cirq():
-    return get_reference_circuit("bell").cirq()
+def circuit_runnable(edge: Paradigm.ConversionEdge, circuit: ReferenceCircuit) -> bool:
+    """Whether the circuit runs on the edge, per the edge's paradigm."""
+    return PARADIGM_BY_NAME[edge.paradigm].circuit_runnable(circuit, edge)
 
 
-def _bell_qiskit():
-    return get_reference_circuit("bell").qiskit()
+def get_reference_circuit(name: str) -> ReferenceCircuit:
+    """Statically build a controlled input circuit by name."""
+    if name not in REFERENCE_CIRCUIT_INDEX:
+        raise KeyError(
+            f"unknown reference circuit {name!r}; available: "
+            f"{sorted(REFERENCE_CIRCUIT_INDEX)}"
+        )
+    return REFERENCE_CIRCUIT_INDEX[name]
 
 
-def _bell_cudaq():
-    return get_reference_circuit("bell").cudaq_kernel()
+# Public aliases kept for backwards compatibility with the per-module API.
+ConversionEdge = Paradigm.ConversionEdge
+Step = Paradigm.Step
+convert = Paradigm.convert
 
 
-def _analog_global_pulser():
-    return get_reference_circuit("analog_global").pulser()
+# Populate the paradigm registry. The imports live at the bottom so the
+# paradigm modules only ever see already-defined names when they import this
+# module (no circular-import surprises): they use the base `Paradigm`, the
+# generic helpers and the loss machinery, all defined above.
+from gate_paradigm import GateParadigm  # noqa: E402
+from analog_paradigm import AnalogParadigm  # noqa: E402
+from photonic_paradigm import PhotonicParadigm  # noqa: E402
 
 
-def _cirq_program(dest_format: Serialization) -> QuantumProgram:
-    return QuantumProgram.from_cirq_circuit(_bell_cirq(), dest_format=dest_format)
+def _register(paradigm: Paradigm) -> None:
+    PARADIGMS.append(paradigm)
+    PARADIGM_BY_NAME[paradigm.name] = paradigm
 
 
-def _pulser_program(dest_format: Serialization) -> QuantumProgram:
-    return QuantumProgram.from_pulser_sequence(
-        _analog_global_pulser(), dest_format=dest_format
-    )
+GATE_PARADIGM = GateParadigm()
+ANALOG_PARADIGM = AnalogParadigm()
+PHOTONIC_PARADIGM = PhotonicParadigm()
 
+for _paradigm in (GATE_PARADIGM, ANALOG_PARADIGM, PHOTONIC_PARADIGM):
+    _register(_paradigm)
 
-def _param_qiskit():
-    return get_reference_circuit("parametrized").qiskit()
-
-
-UNSUPPORTED_CONVERSIONS = (
-    (
-        "from_cirq_circuit -> QASM_V1",
-        lambda: QuantumProgram.from_cirq_circuit(
-            _bell_cirq(), dest_format=Serialization.QASM_V1
-        ),
-    ),
-    (
-        "from_qiskit_circuit -> QASM_V1",
-        lambda: QuantumProgram.from_qiskit_circuit(
-            _bell_qiskit(), dest_format=Serialization.QASM_V1
-        ),
-    ),
-    (
-        "from_qiskit_circuit (unbound params) -> QASM_V2",
-        lambda: QuantumProgram.from_qiskit_circuit(
-            _param_qiskit(), dest_format=Serialization.QASM_V2
-        ),
-    ),
-    (
-        "from_cudaq_kernel -> QASM_V3",
-        lambda: QuantumProgram.from_cudaq_kernel(
-            _bell_cudaq(), dest_format=Serialization.QASM_V3
-        ),
-    ),
-    (
-        "from_cudaq_kernel -> CIRQJSON",
-        lambda: QuantumProgram.from_cudaq_kernel(
-            _bell_cudaq(), dest_format=Serialization.CIRQ_CIRCUIT_JSON_V1
-        ),
-    ),
-    (
-        "to_qasm2_circuit on QASM_V3",
-        lambda: _cirq_program(Serialization.QASM_V3).to_qasm2_circuit(),
-    ),
-    (
-        "to_mimiq_circuit on QASM_V3",
-        lambda: _cirq_program(Serialization.QASM_V3).to_mimiq_circuit(),
-    ),
-    (
-        "to_mimiq_circuit on CIRQJSON",
-        lambda: _cirq_program(Serialization.CIRQ_CIRCUIT_JSON_V1).to_mimiq_circuit(),
-    ),
-    (
-        "to_cudaq_kernel on CIRQJSON",
-        lambda: _cirq_program(Serialization.CIRQ_CIRCUIT_JSON_V1).to_cudaq_kernel(),
-    ),
-    (
-        "to_pulser_sequence on QASM_V2",
-        lambda: QuantumProgram.from_qiskit_circuit(
-            _bell_qiskit(), dest_format=Serialization.QASM_V2
-        ).to_pulser_sequence(),
-    ),
-    (
-        "to_mimiq_circuit on PULSERJSON",
-        lambda: _cirq_program(Serialization.PULSER_SEQUENCE_JSON_V1).to_mimiq_circuit(),
-    ),
-    (
-        "from_pulser_sequence -> QASM_V2",
-        lambda: QuantumProgram.from_pulser_sequence(
-            _analog_global_pulser(), dest_format=Serialization.QASM_V2
-        ),
-    ),
-    (
-        "to_cirq_circuit on PULSERJSON",
-        lambda: _pulser_program(Serialization.PULSER_SEQUENCE_JSON_V1).to_cirq_circuit(),
-    ),
+# Aggregated registries: the rest of the battery consumes these module-level
+# names and automatically extends when a paradigm/edge/circuit is added.
+UNSUPPORTED_CONVERSIONS = tuple(
+    case for _paradigm in PARADIGMS for case in _paradigm.unsupported_conversions
 )
+
+CIRCUIT_FEATURE_COVERAGE = GENERIC_FEATURE_COVERAGE + tuple(
+    row for _paradigm in PARADIGMS for row in _paradigm.feature_coverage
+)
+
+REFERENCE_CIRCUITS = tuple(circuit for _paradigm in PARADIGMS for circuit in _paradigm.circuits)
+REFERENCE_CIRCUIT_INDEX = {circuit.name: circuit for circuit in REFERENCE_CIRCUITS}

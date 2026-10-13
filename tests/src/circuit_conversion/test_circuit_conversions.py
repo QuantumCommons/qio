@@ -14,9 +14,10 @@
 """Test battery: circuit conversions behave correctly on the *same* circuit.
 
 The test cases are not written by hand: they are generated from the declarative
-registries in ``circuit_testing`` (conversion edges) and
-``reference_circuits`` (static, controlled input circuits). Adding a conversion
-or a circuit to those modules automatically extends this battery.
+registries in ``circuit_testing`` (per-paradigm conversion edges and the
+aggregated ``REFERENCE_CIRCUITS``). Adding a conversion or a circuit to a
+paradigm module (``gate_paradigm``, ``analog_paradigm``, ``photonic_paradigm``)
+automatically extends this battery.
 """
 
 import pytest
@@ -24,26 +25,25 @@ import pytest
 from circuit_testing import (
     NONE,
     ZLIB,
+    REFERENCE_CIRCUITS,
     UNSUPPORTED_CONVERSIONS,
     build_edges,
+    circuit_runnable,
     run_path,
 )
-from reference_circuits import REFERENCE_CIRCUITS
 
 COMPRESSIONS = (NONE, ZLIB)
 
 # Expand: edge x circuit x compression. CUDA-Q "counts" edges only support
 # deterministic circuits (they have known expected_counts). A circuit can also
 # restrict the edges it runs on (``supports_edge``) - e.g. symbolic-parameter
-# circuits only survive QASM3/CirqJSON - and can force its oracle.
+# circuits only survive QASM3/CirqJSON - and can force its oracle. The
+# paradigm-agnostic run filter (``circuit_runnable``) centralizes these rules.
 CIRCUIT_CONVERSIONS = []
 for compression in COMPRESSIONS:
     for edge in build_edges(compression):
         for circuit in REFERENCE_CIRCUITS:
-            if not circuit.supports_edge(edge):
-                continue
-            oracle = circuit.oracle or edge.oracle
-            if oracle == "counts" and circuit.expected_counts is None:
+            if not circuit_runnable(edge, circuit):
                 continue
             CIRCUIT_CONVERSIONS.append((edge, circuit, compression))
 
