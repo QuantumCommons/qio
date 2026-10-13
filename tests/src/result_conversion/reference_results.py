@@ -17,7 +17,9 @@ Unlike the SDK tests (which simulate circuits at test time), each
 :class:`ReferenceResult` describes an **already executed** run as a static
 counts histogram (``counts``: ``{bitstring: count}``) plus a shot count. It is
 exposed identically in every SDK result representation - Cirq, Qiskit, CUDA-Q,
-MIMIQ, Perceval - through a single generator ``get_reference_result``.
+MIMIQ, Perceval, Pulser - through the per-SDK adapters in ``result_sdks/``
+(``ResultSDK.build(reference)``); this module itself is pure data and imports
+no SDK.
 
 The bitstring convention is fixed across all SDK fixtures: bitstring character
 ``k`` (from the left, ``0``-indexed) is the measured value of qubit ``k`` on
@@ -25,7 +27,7 @@ the source circuit. Every fixture is built from the *same* canonical bitstring
 set, so every converter (which only re-serializes the bitstrings) must preserve
 them exactly: the result battery compares counts histograms bit-exactly.
 
-Every SDK builder also carries as much *execution metadata* as its format can
+Every reference also carries as much *execution metadata* as its format can
 hold (backend identity, job identifiers, measurement date, register name,
 statevector, MIMIQ ``zstates``/``fidelities``/``avggateerrors``/``timings``).
 Because the whole battery is driven from the SDK **object** (the intermediate
@@ -49,8 +51,6 @@ the output objects:
 
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence, Tuple
-
-import numpy as np
 
 
 @dataclass
@@ -110,166 +110,6 @@ class ReferenceResult:
                 raise ValueError(
                     f"{self.name}: statevector must be real-valued (JSON-safe)"
                 )
-
-    # SDK builders - all static, no execution involved.
-    #
-    # Cirq: one measurement key per qubit (``m<k>``), matching the way
-    # ``cirq_to_qiskit`` / ``cirq_to_mimiq`` reconstruct bitstrings from the
-    # per-key records (sorted keys ``m0, m1, ...`` -> bitstring ``b0 b1 ...``).
-
-    def cirq(self) -> "cirq.Result":
-        import cirq
-
-        measurements = {
-            f"m{k}": np.zeros((self.shots, 1), dtype=np.int8)
-            for k in range(self.n_qubits)
-        }
-        index = 0
-        for bitstring, count in self.counts.items():
-            bits = [int(b) for b in bitstring]
-            for _ in range(count):
-                for k in range(self.n_qubits):
-                    measurements[f"m{k}"][index, 0] = bits[k]
-                index += 1
-        if index != self.shots:
-            raise AssertionError(f"{self.name}: {index} shots != {self.shots}")
-        result = cirq.ResultDict(
-            params=cirq.ParamResolver({}), measurements=measurements
-        )
-        # ``cirq.ParamResolver`` is not JSON-serializable, and qio's result
-        # pipeline is plain JSON (no cirq resolver registry): a non-None
-        # ``params`` cannot be stored in CIRQ_RESULT_JSON_V1 at all. We mirror
-        # the SDK tests (``test_cirq.py`` sets ``_params = None``) and report
-        # this unavoidable loss (LOSS_CIRQ_PARAMS) on every cirq-source edge.
-        result._params = None
-        return result
-
-    # Qiskit: a full Result assembled with qiskit's own model dataclasses
-    # (date, headers, backend identity, counts + per-shot memory + statevector).
-    #
-    # ``date`` is stored as an ISO string: a real ``datetime`` is not JSON
-    # serializable (``Result.to_dict()`` leaves it as a datetime object, which
-    # breaks qio's plain-JSON pipeline - same boundary as cirq params).
-
-    def qiskit(self) -> "qiskit.result.Result":
-        from qiskit.result import Result
-        from qiskit.result.models import ExperimentResult, ExperimentResultData
-
-        memory = []
-        for bitstring, count in self.counts.items():
-            memory.extend([bitstring] * count)
-
-        experiment = ExperimentResult(
-            shots=self.shots,
-            success=True,
-            status="DONE",
-            data=ExperimentResultData(
-                counts=dict(self.counts),
-                memory=memory,
-                statevector=(
-                    list(self.statevector) if self.statevector is not None else None
-                ),
-            ),
-            header={
-                "name": self.name,
-                "n_qubits": self.n_qubits,
-                "memory_slots": self.n_qubits,
-                "qreg_sizes": [["q", self.n_qubits]],
-                "creg_sizes": [["m", self.n_qubits]],
-                "metadata": {"source": "qio-result-fixture"},
-            },
-        )
-
-        return Result(
-            backend_name=self.backend_name,
-            backend_version=self.backend_version,
-            job_id=self.job_id,
-            qobj_id=self.qobj_id,
-            date=self.date,
-            status="COMPLETED",
-            success=True,
-            results=[experiment],
-        )
-
-    # CUDA-Q: a SampleResult reconstructed by ``deserialize`` from a
-    # hand-built serialized blob (the wire format documented by
-    # ``cudaq_sample_to_qiskit``): register name, then per bitstring the
-    # triplet ``[value, bit_size, count]``. ``register_name`` is the CUDA-Q
-    # measurement register ("q" when sampling the qubit register).
-
-    def _cudaq_serialize(self) -> List[int]:
-        data: List[int] = [len(self.register_name)]
-        data.extend(ord(ch) for ch in self.register_name)
-        data.append(len(self.counts))
-        for bitstring, count in self.counts.items():
-            data.append(int(bitstring, 2))
-            data.append(len(bitstring))
-            data.append(count)
-        return data
-
-    def cudaq(self) -> "cudaq.SampleResult":
-        import cudaq
-
-        sample_result = cudaq.SampleResult()
-        sample_result.deserialize(self._cudaq_serialize())
-        return sample_result
-
-    # MIMIQ: a QCSResults populated with the classical states of the run plus
-    # the metadata its format can hold. ``amplitudes`` is intentionally NOT set
-    # here: it is keyed by ``bitarray`` and complex-valued, hence not JSON
-    # serializable - see the module docstring.
-
-    def mimiq(self) -> "mimiqcircuits.QCSResults":
-        from bitarray import frozenbitarray
-        from mimiqcircuits import QCSResults
-
-        cstates: List[frozenbitarray] = []
-        for bitstring, count in self.counts.items():
-            cstates.extend([frozenbitarray(bitstring)] * count)
-
-        kwargs: dict = dict(
-            simulator=self.backend_name,
-            version=self.backend_version,
-            cstates=cstates,
-            fidelities=list(self.fidelities or []),
-            avggateerrors=list(self.avggateerrors or []),
-            timings=dict(self.timings or {}),
-        )
-        if self.zstates:
-            kwargs["zstates"] = [frozenbitarray(z) for z in self.zstates]
-
-        return QCSResults(**kwargs)
-
-    # Perceval: a BSSamples (list of Fock states), one state per shot. Mode k of
-    # the Fock state is qubit k, so the bitstring convention of the battery is
-    # preserved exactly (``|b0,b1,...>`` <-> ``b0b1...``). Perceval is imported
-    # lazily: the perceval leg of the battery runs in the perceval-only pytest
-    # invocation (mimiqcircuits and Perceval's ``circuit.proto`` conflict).
-
-    def perceval(self) -> "pcvl.BSSamples":
-        import perceval as pcvl
-
-        samples = []
-        for bitstring, count in self.counts.items():
-            state = pcvl.BasicState(np.array([int(b) for b in bitstring]))
-            samples.extend([state] * count)
-        return pcvl.BSSamples(samples)
-
-    # Pulser: a ``pulser.backend.Results`` built straight from the counts
-    # histogram via ``from_final_bitstrings``. ``atom_order`` has one id per
-    # qubit (``q0, q1, ...``) and ``final_bitstrings`` keys are the battery's
-    # bitstrings bit-exact, matching the other SDK builders. Pulser does not
-    # conflict with mimiqcircuits (unlike Perceval), so this leg lives in the
-    # main pytest invocation.
-
-    def pulser(self) -> "pulser.backend.Results":
-        from pulser.backend import Results
-
-        return Results.from_final_bitstrings(
-            atom_order=tuple(f"q{k}" for k in range(self.n_qubits)),
-            total_duration=1000,
-            final_bitstrings=dict(self.counts),
-        )
 
 
 _RT2 = 0.7071067811865475

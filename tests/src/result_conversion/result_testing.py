@@ -11,21 +11,28 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Modular test helpers for the result conversion battery.
+"""Driver, base class and registries of the result conversion battery.
 
 Design (mirrors ``circuit_testing`` for circuits):
+- **Per-SDK adapters** : every SDK - Cirq, Qiskit, CUDA-Q, MIMIQ, Perceval,
+  Pulser - is one :class:`ResultSDK` subclass in ``result_sdks/``. An adapter
+  groups everything SDK-specific in one place: the static input builder, the
+  format check, the dict-converter module name, the wrap/read classmethods, the
+  metadata probes and the inherent losses. Adding an SDK never touches the
+  driver.
 - **Lengthened edges** : every edge is driven from the SDK **object** and makes
   the qio ``<sdk>_to_dict`` converter an explicit first step, so the full chain
   ``SDK object -> <sdk>_to_dict -> QuantumProgramResult -> to_<target>`` is
   exercised (no hand-authored intermediate dicts / second source of truth).
-- **One format checker per SDK** : ``check_cirq``, ``check_qiskit``,
-  ``check_cudaq``, ``check_mimiq``, ``check_perceval``, ``check_pulser``. Each
-  validates the object type and reduces the result to its canonical **counts
-  histogram** (``{bitstring: count}``) compared bit-exactly against the
-  reference - plus the total shot count.
-- **SDK-lazy collection** : like the circuit battery, this module imports no
-  SDK at import time (the ``<sdk>_to_dict`` converters are pulled in lazily on
-  first use). Two reasons: the battery must stay selectable by ``-k perceval``
+- **Declarative graph** : :data:`EDGES` declares, per input SDK, the read
+  targets it can be converted to. ``build_edges()`` expands that graph into
+  :class:`ConversionEdge` rows (id ``qiskit.Result -> qiskit_result_json_v1 ->
+  qiskit.Result``, input builder, write+read steps, ``known_losses`` = target
+  losses + source static losses). ``UNSUPPORTED_CONVERSIONS`` (the negative
+  cases) is the **complement** of the graph, derived automatically.
+- **SDK-lazy collection** : this module and the adapters import no SDK at
+  import time (the ``<sdk>_to_dict`` converters are pulled in lazily on first
+  use). Two reasons: the battery must stay selectable by ``-k perceval``
   without importing mimiqcircuits (mimiq's and Perceval's ``circuit.proto``
   conflict in protobuf's global descriptor pool), and collection must not
   depend on any heavy SDK presence.
@@ -35,25 +42,15 @@ Design (mirrors ``circuit_testing`` for circuits):
   CUDA-Q register name). A probe that differs from the reference records the
   corresponding **information loss**; this is what makes the loss of each
   conversion path visible instead of silently dropping fields.
-- **Static inputs** : every reference result is an already executed run
-  (``{bitstring: count}``), exposed identically in every SDK format by
-  ``reference_results``. Input results are NOT checked - they are built
-  statically and trusted.
 - **Information-loss policy** : each :class:`ConversionEdge` declares the
   losses inherent to its path (``known_losses``). Checks are exact-first: a
   deviation that is not declared fails the test; a declared one is tolerated
   and recorded (``loss_report()``).
 - **Generic driver** : ``convert`` runs one conversion with its post-checks;
   ``run_path`` runs a full edge (input -> write -> read).
-- **Declarative registry** : ``build_edges()`` returns the full conversion
-  graph as :class:`ConversionEdge` rows. Each edge is declared by a single
-  ``add(...)`` call (like the circuit battery) with its annotated id
-  (``qiskit.Result -> qiskit_result_json_v1 -> qiskit.Result``), the input kind
-  that produces the intermediate, the target reader and its check, and the
-   losses inherent to the path. ``UNSUPPORTED_CONVERSIONS`` hosts the negative
-   cases.
 """
 
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from importlib import import_module
 from typing import Any, Callable, Dict, Optional, Sequence, Tuple
@@ -220,104 +217,7 @@ def _run_probes(probes: Sequence[Probe], result: Any, expected: ReferenceResult)
             )
 
 
-# Qiskit probes: the qiskit run metadata + statevector.
-
-
-def _iso(value: Any) -> Any:
-    return value.isoformat() if hasattr(value, "isoformat") else value
-
-
-def _qiskit_statevector(result: Any) -> Optional[Sequence[float]]:
-    try:
-        sv = result.data(0).statevector
-    except Exception:
-        return None
-    return list(sv) if sv is not None else None
-
-
-QISKIT_PROBES = (
-    Probe(LOSS_QISKIT_METADATA, "backend_name", lambda r: r.backend_name, lambda ref: ref.backend_name),
-    Probe(LOSS_QISKIT_METADATA, "backend_version", lambda r: r.backend_version, lambda ref: ref.backend_version),
-    Probe(LOSS_QISKIT_METADATA, "job_id", lambda r: r.job_id, lambda ref: ref.job_id),
-    Probe(LOSS_QISKIT_METADATA, "qobj_id", lambda r: r.qobj_id, lambda ref: ref.qobj_id),
-    Probe(LOSS_QISKIT_METADATA, "date", lambda r: r.date, lambda ref: ref.date, normalize=_iso),
-    Probe(
-        LOSS_QISKIT_STATEVECTOR,
-        "statevector",
-        _qiskit_statevector,
-        lambda ref: list(ref.statevector) if ref.statevector is not None else None,
-        normalize=lambda v: [float(x) for x in v] if v is not None else None,
-    ),
-)
-
-# MIMIQ probes.
-
-
-def _mimiq_zstates(result: Any) -> list:
-    zstates = getattr(result, "zstates", None)
-    if not zstates:
-        return []
-    return [z.to01() if hasattr(z, "to01") else str(z) for z in zstates]
-
-
-def _mimiq_amplitudes(result: Any) -> Dict[str, complex]:
-    amplitudes = getattr(result, "amplitudes", None) or {}
-    out = {}
-    for key, value in amplitudes.items():
-        bitstring = key.to01() if hasattr(key, "to01") else str(key)
-        out[bitstring] = complex(value)
-    return out
-
-
-def _norm_seq(value: Optional[Sequence]) -> Sequence:
-    return [] if value is None else list(value)
-
-
-def _norm_dict(value: Optional[Dict]) -> Dict:
-    return {} if value is None else dict(value)
-
-
-MIMIQ_PROBES = (
-    Probe(LOSS_MIMIQ_METADATA, "simulator", lambda r: getattr(r, "simulator", None), lambda ref: ref.backend_name),
-    Probe(LOSS_MIMIQ_METADATA, "version", lambda r: getattr(r, "version", None), lambda ref: ref.backend_version),
-    Probe(LOSS_MIMIQ_METADATA, "timings", lambda r: _norm_dict(getattr(r, "timings", None)), lambda ref: dict(ref.timings or {})),
-    Probe(LOSS_MIMIQ_METADATA, "zstates", _mimiq_zstates, lambda ref: list(ref.zstates or [])),
-    Probe(LOSS_MIMIQ_METADATA, "fidelities", lambda r: _norm_seq(getattr(r, "fidelities", None)), lambda ref: list(ref.fidelities or [])),
-    Probe(LOSS_MIMIQ_METADATA, "avggateerrors", lambda r: _norm_seq(getattr(r, "avggateerrors", None)), lambda ref: list(ref.avggateerrors or [])),
-    Probe(LOSS_MIMIQ_AMPLITUDES, "amplitudes", _mimiq_amplitudes, lambda ref: ref._expected_amplitudes()),
-)
-
-# CUDA-Q probes: the measurement register name(s).
-
-
-def _cudaq_register_names(result: Any) -> Optional[set]:
-    try:
-        data = result.serialize()
-    except Exception:
-        return None
-    names = set()
-    stride = 0
-    while stride < len(data):
-        n_chars = data[stride]
-        stride += 1
-        name = "".join(chr(data[i]) for i in range(stride, stride + n_chars))
-        stride += n_chars
-        num_bitstrings = data[stride]
-        stride += 1
-        if num_bitstrings > 0:
-            # Skip the synthetic, count-less '__global__' register CUDA-Q adds
-            # on deserialize.
-            names.add(name)
-        stride += num_bitstrings * 3
-    return names
-
-
-CUDAQ_PROBES = (
-    Probe(LOSS_CUDAQ_REGISTER, "register", _cudaq_register_names, lambda ref: {ref.register_name}),
-)
-
-
-# Shared count extraction + comparison
+# Shared count comparison
 
 
 def _assert_counts(counts: Dict[str, int], expected: ReferenceResult) -> None:
@@ -328,19 +228,6 @@ def _assert_counts(counts: Dict[str, int], expected: ReferenceResult) -> None:
     )
     total = sum(int(v) for v in counts.values())
     assert total == expected.shots, (total, expected.shots)
-
-
-def _normalize_hex_counts(raw: Dict[Any, Any], n_qubits: int) -> Dict[str, int]:
-    """Normalizes possibly-hex qiskit counts to plain bitstrings."""
-    out: Dict[str, int] = {}
-    for bitstring, count in raw.items():
-        count = int(count)
-        if isinstance(bitstring, str) and bitstring.startswith("0x"):
-            bitstring = format(int(bitstring, 16), f"0{n_qubits}b")
-        else:
-            bitstring = str(bitstring)
-        out[bitstring] = out.get(bitstring, 0) + count
-    return out
 
 
 def _resolve_serialization(result: QuantumProgramResult):
@@ -355,185 +242,42 @@ def _resolve_serialization(result: QuantumProgramResult):
     return json.loads(result.serialization)
 
 
-# Format checks (one per SDK / result format)
+# Per-SDK adapter base class
+#
+# One subclass per SDK lives in ``result_sdks/`` and is registered in
+# ``result_sdks``. It carries everything SDK-specific; the driver below is
+# generic and only consumes the adapter interface.
 
 
-def check_program_result(serialization_format: Serialization) -> Callable:
-    """Validates a QuantumProgramResult intermediate: format matches, the
-    serialization is non-empty, decompresses cleanly, and carries the
-    mandatory top-level fields of its format."""
+class ResultSDK(ABC):
+    """Base class for a result-SDK adapter.
 
-    _REQUIRED_KEYS = {
-        Serialization.CIRQ_RESULT_JSON_V1: ("records",),
-        Serialization.QISKIT_RESULT_JSON_V1: ("results",),
-        Serialization.MIMIQ_QCSR_JSON_V1: ("histogram", "simulator", "version"),
-        Serialization.CUDAQ_SAMPLE_RESULT_JSON_V1: (),
-        Serialization.PERCEVAL_RESULT_JSON_V1: ("perceval_result",),
-        Serialization.PULSER_RESULT_JSON_V1: ("atom_order", "results"),
-    }
+    Class attributes hold the SDK facts; ``build``/``check`` import the SDK
+    lazily (never at collection time).
+    """
 
-    def _check(result, expected: Optional[ReferenceResult] = None) -> None:
-        assert isinstance(result, QuantumProgramResult), type(result)
-        assert result.serialization_format == serialization_format, (
-            result.serialization_format,
-            serialization_format,
-        )
-        assert bool(result.serialization), "empty serialization"
-        content = _resolve_serialization(result)
-        required = _REQUIRED_KEYS[serialization_format]
-        if isinstance(content, dict):
-            for key in required:
-                assert key in content, f"intermediate missing {key!r}: {content.keys()}"
+    kind: str                       # registry key / input_kind ("cirq")
+    display: str                    # type written in edge ids ("cirq.Result")
+    fmt: Serialization              # the unique intermediate format this source writes
+    fmt_label: str                  # its label in edge ids ("cirq_result_json_v1")
+    dict_keys: Tuple[str, ...]      # mandatory top-level keys of the intermediate dict
+    to_dict_module: Optional[str] = None   # qio "<sdk>_to_dict" module; None => direct wrap
+    from_dict: Optional[Callable] = None   # from_<sdk>_result_dict classmethod; None => direct wrap
+    wrap: Optional[Callable] = None        # from_<sdk>_result classmethod (object -> QuantumProgramResult)
+    read: Optional[Callable] = None        # to_<sdk>_result classmethod (QuantumProgramResult -> object)
+    target_losses: Tuple[str, ...] = ()            # losses inherent when arriving on this SDK
+    static_source_losses: Tuple[str, ...] = ()     # losses inherent when departing from this SDK
+    source_loss: Optional[Tuple[str, Optional[str]]] = None  # observed at the to_dict step
+    probes: Tuple[Probe, ...] = ()
 
-    return _check
+    @abstractmethod
+    def build(self, reference: ReferenceResult):  # pragma: no cover - interface
+        """Builds the static SDK input object from a reference result."""
 
-
-def check_to_dict(input_kind: str) -> Callable:
-    """Validates the dict produced by qio's ``<sdk>_to_dict`` right after the
-    first step of an edge (before wrapping, so no loss can be hidden)."""
-
-    def _check(result, expected: Optional[ReferenceResult] = None) -> None:
-        assert result is not None, "to_dict produced nothing"
-        if input_kind == "cirq":
-            assert isinstance(result, dict) and "records" in result, (
-                f"cirq dict missing 'records': {type(result)}"
-            )
-            record_loss(
-                LOSS_CIRQ_PARAMS,
-                detail="cirq Result params cannot be stored: ParamResolver is "
-                "not JSON-serializable, so params never cross the format",
-            )
-        elif input_kind == "qiskit":
-            assert isinstance(result, dict) and "results" in result, (
-                f"qiskit dict missing 'results': {type(result)}"
-            )
-        elif input_kind == "mimiq":
-            assert isinstance(result, dict)
-            for key in ("simulator", "version", "histogram"):
-                assert key in result, f"mimiq dict missing {key!r}: {result.keys()}"
-        elif input_kind == "perceval":
-            assert isinstance(result, dict) and "perceval_result" in result, (
-                f"perceval dict missing 'perceval_result': {type(result)}"
-            )
-        elif input_kind == "pulser":
-            assert isinstance(result, dict) and "atom_order" in result and "results" in result, (
-                f"pulser dict missing 'atom_order'/'results': {type(result)}"
-            )
-
-    return _check
-
-
-def _cirq_counts(result) -> Dict[str, int]:
-    import collections
-
-    keys = sorted(result.measurements.keys())
-    if not keys:
-        return {}
-    repetitions = int(result.measurements[keys[0]].shape[0])
-    samples = []
-    for r in range(repetitions):
-        bits = []
-        for key in keys:
-            bits.extend(int(v) for v in result.measurements[key][r])
-        samples.append("".join(map(str, bits)))
-    return dict(collections.Counter(samples))
-
-
-def check_cirq(result, expected: Optional[ReferenceResult] = None) -> None:
-    import cirq
-
-    assert isinstance(result, cirq.Result), f"expected cirq.Result, got {type(result)}"
-    if expected is not None:
-        _assert_counts(_cirq_counts(result), expected)
-
-
-def _qiskit_counts(result, expected: Optional[ReferenceResult] = None) -> Dict[str, int]:
-    experiment = result.to_dict()["results"][0]
-    header = experiment.get("header", {}) or {}
-    raw = dict((experiment.get("data", {}) or {}).get("counts", {}) or {})
-    n_qubits = header.get("n_qubits")
-    if n_qubits is None and raw:
-        n_qubits = max(
-            (len(str(k)) for k in raw if not (isinstance(k, str) and k.startswith("0x"))),
-            default=0,
-        )
-    n_qubits = int(n_qubits or 0)
-    return _normalize_hex_counts(raw, n_qubits)
-
-
-def check_qiskit(result, expected: Optional[ReferenceResult] = None) -> None:
-    from qiskit.result import Result
-
-    assert isinstance(result, Result), f"expected qiskit Result, got {type(result)}"
-    if expected is not None:
-        _assert_counts(_qiskit_counts(result, expected), expected)
-        _run_probes(QISKIT_PROBES, result, expected)
-
-
-def _parse_cudaq_serialize(data) -> Dict[str, int]:
-    """Independent parser for the CUDA-Q SampleResult wire format (register
-    name, then ``[value, bit_size, count]`` triplets per bitstring)."""
-    stride = 0
-    counts: Dict[str, int] = {}
-    while stride < len(data):
-        n_chars = data[stride]
-        stride += 1
-        stride += n_chars  # register name, already accounted for
-        num_bitstrings = data[stride]
-        stride += 1
-        for _ in range(num_bitstrings):
-            value = data[stride]
-            size = data[stride + 1]
-            count = data[stride + 2]
-            stride += 3
-            counts[format(value, f"0{size}b")] = int(count)
-    return counts
-
-
-def check_cudaq(result, expected: Optional[ReferenceResult] = None) -> None:
-    import cudaq
-
-    assert isinstance(result, cudaq.SampleResult), f"expected SampleResult, got {type(result)}"
-    if expected is not None:
-        _assert_counts(_parse_cudaq_serialize(result.serialize()), expected)
-        _run_probes(CUDAQ_PROBES, result, expected)
-
-
-def check_mimiq(result, expected: Optional[ReferenceResult] = None) -> None:
-    import mimiqcircuits
-
-    assert isinstance(result, mimiqcircuits.QCSResults), f"expected QCSResults, got {type(result)}"
-    if expected is not None:
-        histogram = result.histogram()
-        counts = {key.to01(): int(count) for key, count in histogram.items()}
-        _assert_counts(counts, expected)
-        _run_probes(MIMIQ_PROBES, result, expected)
-
-
-def _perceval_counts(result) -> Dict[str, int]:
-    # BSSamples of Fock states "|b0,b1,...>" -> bitstring "b0b1..." (mode k is
-    # qubit k, matching the battery's bitstring convention).
-    counts: Dict[str, int] = {}
-    for sample in result:
-        bitstring = str(sample).replace("|", "").replace(">", "").replace(",", "")
-        counts[bitstring] = counts.get(bitstring, 0) + 1
-    return counts
-
-
-def check_perceval(result, expected: Optional[ReferenceResult] = None) -> None:
-    import perceval as pcvl
-
-    assert isinstance(result, pcvl.BSSamples), f"expected BSSamples, got {type(result)}"
-    if expected is not None:
-        _assert_counts(_perceval_counts(result), expected)
-
-
-def check_pulser(result, expected: Optional[ReferenceResult] = None) -> None:
-    from pulser.backend import Results
-
-    assert isinstance(result, Results), f"expected pulser.backend.Results, got {type(result)}"
-    if expected is not None:
-        _assert_counts(dict(result.final_bitstrings), expected)
+    @abstractmethod
+    def check(self, result, expected: Optional[ReferenceResult] = None) -> None:
+        """Validates the object type and, when ``expected`` is given, checks
+        the counts histogram bit-exactly and runs the metadata probes."""
 
 
 # Generic driver + pipeline
@@ -598,344 +342,175 @@ def run_path(edge: ConversionEdge, reference: ReferenceResult) -> Any:
     return current
 
 
-# Declarative registries
+# Intermediate checks: generated from the adapter's facts.
 
 
-def _input_fn(kind: str) -> Callable[[ReferenceResult], Any]:
-    """input_kind -> callable producing the static SDK input object."""
-    return {
-        "cirq": lambda r: r.cirq(),
-        "qiskit": lambda r: r.qiskit(),
-        "cudaq": lambda r: r.cudaq(),
-        "mimiq": lambda r: r.mimiq(),
-        "perceval": lambda r: r.perceval(),
-        "pulser": lambda r: r.pulser(),
-    }[kind]
+def check_program_result(sdk: ResultSDK) -> Callable:
+    """Validates a QuantumProgramResult intermediate: format matches, the
+    serialization is non-empty, decompresses cleanly, and carries the
+    mandatory top-level fields of its format (``sdk.dict_keys``)."""
+
+    def _check(result, expected: Optional[ReferenceResult] = None) -> None:
+        assert isinstance(result, QuantumProgramResult), type(result)
+        assert result.serialization_format == sdk.fmt, (
+            result.serialization_format,
+            sdk.fmt,
+        )
+        assert bool(result.serialization), "empty serialization"
+        content = _resolve_serialization(result)
+        if isinstance(content, dict):
+            for key in sdk.dict_keys:
+                assert key in content, f"intermediate missing {key!r}: {content.keys()}"
+
+    return _check
 
 
-_CONVERTER_MODULES = {
-    "cirq": "cirq_to_dict",
-    "qiskit": "qiskit_to_dict",
-    "mimiq": "mimiq_to_dict",
-    "perceval": "perceval_to_dict",
-    "pulser": "pulser_to_dict",
-}
+def check_to_dict(sdk: ResultSDK) -> Callable:
+    """Validates the dict produced by qio's ``<sdk>_to_dict`` right after the
+    first step of an edge (before wrapping, so no loss can be hidden); records
+    the declared source loss (e.g. cirq params) if the adapter declares one."""
+
+    def _check(result, expected: Optional[ReferenceResult] = None) -> None:
+        assert result is not None, "to_dict produced nothing"
+        assert isinstance(result, dict), f"{sdk.kind} to_dict produced a non-dict: {type(result)}"
+        for key in sdk.dict_keys:
+            assert key in result, f"{sdk.kind} dict missing {key!r}: {result.keys()}"
+        if sdk.source_loss is not None:
+            category, detail = sdk.source_loss
+            record_loss(category, detail=detail)
+
+    return _check
 
 
-def _to_dict(input_kind: str) -> Callable:
-    """Lazy ``<sdk>_to_dict`` converter (imported on first use, so collecting
-    the battery never imports an SDK)."""
-    return import_module(
-        f"qio.utils.conversion.program_result.{_CONVERTER_MODULES[input_kind]}"
-    ).convert
-
-
-def _from_dict(input_kind: str) -> Callable:
-    """Lazy ``from_<sdk>_result_dict`` wrap (the SDK imports live inside qio's
-    classmethods, never at collection time)."""
-    return {
-        "cirq": QuantumProgramResult.from_cirq_result_dict,
-        "qiskit": QuantumProgramResult.from_qiskit_result_dict,
-        "mimiq": QuantumProgramResult.from_mimiq_qcsr_dict,
-        "perceval": QuantumProgramResult.from_perceval_result_dict,
-        "pulser": QuantumProgramResult.from_pulser_result_dict,
-    }[input_kind]
-
-
-def _producer_steps(input_kind: str, fmt: Serialization, compression: Compression):
+def _producer_steps(sdk: ResultSDK, compression: Compression):
     """Write-side steps of a lengthened edge: SDK object -> ``*_to_dict``
     (checked) -> ``from_*_result_dict`` wrap (checked intermediate). CUDA-Q has
-    no separate dict classmethod: ``from_cudaq_sample_result`` serializes
-    internally (``_to_dict`` is ``SampleResult.serialize()`` already
-    exercised by the read/cudaq edges)."""
-    if input_kind == "cudaq":
-        wrap = lambda obj: QuantumProgramResult.from_cudaq_sample_result(
-            obj, compression_format=compression
-        )
-        return (Step(wrap, {}, (check_program_result(fmt),)),)
+    no separate dict classmethod (``to_dict_module`` is None):
+    ``from_cudaq_sample_result`` serializes internally, so the write side is
+    just the wrap step."""
+    if sdk.to_dict_module is None:
+        # ``type(sdk)`` access keeps the qio converter a plain unbound function
+        # (instance access would bind it to the adapter and break the call).
+        wrap = lambda obj: type(sdk).wrap(obj, compression_format=compression)
+        return (Step(wrap, {}, (check_program_result(sdk),)),)
 
-    to_dict = _LazyFn(lambda: _to_dict(input_kind))
-    wrap_fn = _from_dict(input_kind)
+    to_dict = _LazyFn(
+        lambda sdk=sdk: import_module(
+            f"qio.utils.conversion.program_result.{sdk.to_dict_module}"
+        ).convert
+    )
+    wrap_fn = type(sdk).from_dict
 
     def wrap(obj):
         return wrap_fn(obj, compression_format=compression)
 
     return (
-        Step(to_dict, {}, (check_to_dict(input_kind),)),
-        Step(wrap, {}, (check_program_result(fmt),)),
+        Step(to_dict, {}, (check_to_dict(sdk),)),
+        Step(wrap, {}, (check_program_result(sdk),)),
     )
 
 
-# One (object) input kind per format: the intermediate dicts are produced by
-# qio's own ``*_to_dict`` converters, never hand-authored. The write-side steps
-# of an edge are derived from the input kind via this map.
-_INPUT_FORMAT = {
-    "cirq": Serialization.CIRQ_RESULT_JSON_V1,
-    "qiskit": Serialization.QISKIT_RESULT_JSON_V1,
-    "cudaq": Serialization.CUDAQ_SAMPLE_RESULT_JSON_V1,
-    "mimiq": Serialization.MIMIQ_QCSR_JSON_V1,
-    "perceval": Serialization.PERCEVAL_RESULT_JSON_V1,
-    "pulser": Serialization.PULSER_RESULT_JSON_V1,
-}
+# Negative-case machinery: ``UNSUPPORTED_CONVERSIONS`` is the complement of the
+# declared read graph.
 
-# Per-source losses that apply whatever the target (e.g. cirq params cannot be
-# stored at all); auto-joined to every edge of that source.
-_SOURCE_STATIC_LOSSES = {
-    "cirq": (LOSS_CIRQ_PARAMS,),
-}
+
+def _qpr(sdk: ResultSDK, compression: Compression = NONE) -> QuantumProgramResult:
+    """Builds a QuantumProgramResult holding a reference result in ``sdk``'s
+    format."""
+    reference = get_reference_result("bell2")
+    return type(sdk).wrap(sdk.build(reference), compression_format=compression)
+
+
+def _neg_op(input_sdk: ResultSDK, target_sdk: ResultSDK) -> Callable:
+    """Callable building an input ``QuantumProgramResult`` and attempting the
+    forbidden ``to_<target>_result`` call (must raise)."""
+    read_name = type(target_sdk).read.__name__
+
+    def op():
+        return getattr(_qpr(input_sdk), read_name)()
+
+    return op
+
+
+def _to_negatives() -> Tuple[Tuple[str, Callable], ...]:
+    """Derives the negative cases: every ``(input, target)`` pair not in
+    :data:`EDGES` must raise. The two cases that pull mimiqcircuits into the
+    perceval-only invocation are pinned last (mimiq/Perceval ``circuit.proto``
+    conflict)."""
+    allowed = frozenset((inp.kind, tgt.kind) for inp, targets in EDGES for tgt in targets)
+    negatives = []
+    for input_sdk in SDKS.values():
+        for target_sdk in SDKS.values():
+            if (input_sdk.kind, target_sdk.kind) in allowed:
+                continue
+            negatives.append(
+                (
+                    f"{target_sdk.read.__name__} on {input_sdk.fmt.name}",
+                    _neg_op(input_sdk, target_sdk),
+                )
+            )
+    # mimiq cannot be imported in a Perceval process (protobuf conflict); it
+    # must therefore be the last thing tried there.
+    _MIMIQ_MUST_BE_LAST = {
+        "to_mimiq_qcsr on PERCEVAL_RESULT_JSON_V1",
+        "to_perceval_result on MIMIQ_QCSR_JSON_V1",
+    }
+    negatives.sort(key=lambda item: item[0] in _MIMIQ_MUST_BE_LAST)
+    return tuple(negatives)
+
+
+# Registered SDKs and the read graph. Populated below from ``result_sdks`` so
+# that the adapters can import the driver (base class / helpers) without a
+# circular-import failure.
+
+SDKS: Dict[str, ResultSDK] = {}
+
+
+def _edge_rows() -> Tuple[Tuple[ResultSDK, Tuple[ResultSDK, ...]], ...]:
+    c = SDKS["cirq"]
+    q = SDKS["qiskit"]
+    cq = SDKS["cudaq"]
+    m = SDKS["mimiq"]
+    p = SDKS["perceval"]
+    pu = SDKS["pulser"]
+    return (
+        (c, (c, q, m)),
+        (q, (q, c, m)),
+        (cq, (cq, q)),
+        (m, (m, c, q)),
+        (p, (p,)),
+        (pu, (pu,)),
+    )
 
 
 def build_edges(compression: Compression) -> Tuple[ConversionEdge, ...]:
     """Builds the conversion graph (result format -> target SDK) for one
     compression, driven from the SDK object through qio's ``*_to_dict``.
 
-    Every edge is declared by a single ``add(...)`` call - as in the circuit
-    battery - with its annotated id (``qiskit.Result -> qiskit_result_json_v1
-    -> qiskit.Result``), the ``input_kind`` that produces the intermediate, the
-    ``to_<target>_result`` reader and its check, plus the losses inherent to
-    that path (``known_losses``); any deviation in another category fails the
-    test.
+    Every edge is generated from :data:`EDGES`: the input SDK produces its
+    intermediate format, and each declared read target expands into one edge
+    whose ``known_losses`` are the target losses plus the input source's static
+    losses. Any deviation in another category fails the test.
     """
     edges = []
-
-    def add(
-        edge_id: str,
-        input_kind: str,
-        read_fn: Callable,
-        read_check: Callable,
-        known_losses: Tuple[str, ...] = (),
-    ) -> None:
-        fmt = _INPUT_FORMAT[input_kind]
-        steps = _producer_steps(input_kind, fmt, compression) + (
-            Step(read_fn, {}, (read_check,)),
-        )
-        known = tuple(known_losses) + _SOURCE_STATIC_LOSSES.get(input_kind, ())
-        edges.append(
-            ConversionEdge(
-                id=edge_id,
-                input_fn=_input_fn(input_kind),
-                steps=steps,
-                known_losses=known,
+    for input_sdk, targets in EDGES:
+        steps = _producer_steps(input_sdk, compression)
+        for target in targets:
+            edge_id = f"{input_sdk.display} -> {input_sdk.fmt_label} -> {target.display}"
+            known = tuple(target.target_losses) + tuple(input_sdk.static_source_losses)
+            edges.append(
+                ConversionEdge(
+                    id=edge_id,
+                    input_fn=lambda ref, sdk=input_sdk: sdk.build(ref),
+                    steps=steps + (Step(type(target).read, {}, (target.check,)),),
+                    known_losses=known,
+                )
             )
-        )
-
-    add(
-        "cirq.Result -> cirq_result_json_v1 -> cirq.Result",
-        "cirq",
-        QuantumProgramResult.to_cirq_result,
-        check_cirq,
-    )
-    add(
-        "cirq.Result -> cirq_result_json_v1 -> qiskit.Result",
-        "cirq",
-        QuantumProgramResult.to_qiskit_result,
-        check_qiskit,
-        (LOSS_QISKIT_METADATA, LOSS_QISKIT_STATEVECTOR),
-    )
-    add(
-        "cirq.Result -> cirq_result_json_v1 -> mimiqcircuits.QCSResults",
-        "cirq",
-        QuantumProgramResult.to_mimiq_qcsr,
-        check_mimiq,
-        (LOSS_MIMIQ_METADATA, LOSS_MIMIQ_AMPLITUDES),
-    )
-    add(
-        "qiskit.Result -> qiskit_result_json_v1 -> qiskit.Result",
-        "qiskit",
-        QuantumProgramResult.to_qiskit_result,
-        check_qiskit,
-        (LOSS_QISKIT_METADATA, LOSS_QISKIT_STATEVECTOR),
-    )
-    add(
-        "qiskit.Result -> qiskit_result_json_v1 -> cirq.Result",
-        "qiskit",
-        QuantumProgramResult.to_cirq_result,
-        check_cirq,
-    )
-    add(
-        "qiskit.Result -> qiskit_result_json_v1 -> mimiqcircuits.QCSResults",
-        "qiskit",
-        QuantumProgramResult.to_mimiq_qcsr,
-        check_mimiq,
-        (LOSS_MIMIQ_METADATA, LOSS_MIMIQ_AMPLITUDES),
-    )
-    add(
-        "cudaq.SampleResult -> cudaq_sample_result_json_v1 -> cudaq.SampleResult",
-        "cudaq",
-        QuantumProgramResult.to_cudaq_sample_result,
-        check_cudaq,
-    )
-    add(
-        "cudaq.SampleResult -> cudaq_sample_result_json_v1 -> qiskit.Result",
-        "cudaq",
-        QuantumProgramResult.to_qiskit_result,
-        check_qiskit,
-        (LOSS_QISKIT_METADATA, LOSS_QISKIT_STATEVECTOR),
-    )
-    add(
-        "mimiqcircuits.QCSResults -> mimiq_qcsr_json_v1 -> mimiqcircuits.QCSResults",
-        "mimiq",
-        QuantumProgramResult.to_mimiq_qcsr,
-        check_mimiq,
-        (LOSS_MIMIQ_METADATA, LOSS_MIMIQ_AMPLITUDES),
-    )
-    add(
-        "mimiqcircuits.QCSResults -> mimiq_qcsr_json_v1 -> cirq.Result",
-        "mimiq",
-        QuantumProgramResult.to_cirq_result,
-        check_cirq,
-    )
-    add(
-        "mimiqcircuits.QCSResults -> mimiq_qcsr_json_v1 -> qiskit.Result",
-        "mimiq",
-        QuantumProgramResult.to_qiskit_result,
-        check_qiskit,
-        (LOSS_QISKIT_METADATA, LOSS_QISKIT_STATEVECTOR),
-    )
-    add(
-        "perceval.BSSamples -> perceval_result_json_v1 -> perceval.BSSamples",
-        "perceval",
-        QuantumProgramResult.to_perceval_result,
-        check_perceval,
-    )
-    add(
-        "pulser.backend.Results -> pulser_result_json_v1 -> pulser.backend.Results",
-        "pulser",
-        QuantumProgramResult.to_pulser_result,
-        check_pulser,
-    )
-
     return tuple(edges)
 
 
-# Negative/edge cases: each entry is (id, callable) and must raise an Exception.
+from result_sdks import SDK_RESULTS  # noqa: E402
 
-
-def _qpr(
-    fmt: Serialization, compression: Compression = NONE
-) -> QuantumProgramResult:
-    """Builds a QuantumProgramResult holding a reference result in ``fmt``."""
-    reference = get_reference_result("bell2")
-    makers = {
-        Serialization.CIRQ_RESULT_JSON_V1: lambda: QuantumProgramResult.from_cirq_result(
-            reference.cirq(), compression_format=compression
-        ),
-        Serialization.QISKIT_RESULT_JSON_V1: lambda: QuantumProgramResult.from_qiskit_result(
-            reference.qiskit(), compression_format=compression
-        ),
-        Serialization.CUDAQ_SAMPLE_RESULT_JSON_V1: lambda: QuantumProgramResult.from_cudaq_sample_result(
-            reference.cudaq(), compression_format=compression
-        ),
-        Serialization.MIMIQ_QCSR_JSON_V1: lambda: QuantumProgramResult.from_mimiq_qcsr(
-            reference.mimiq(), compression_format=compression
-        ),
-        Serialization.PERCEVAL_RESULT_JSON_V1: lambda: QuantumProgramResult.from_perceval_result(
-            reference.perceval(), compression_format=compression
-        ),
-        Serialization.PULSER_RESULT_JSON_V1: lambda: QuantumProgramResult.from_pulser_result(
-            reference.pulser(), compression_format=compression
-        ),
-    }
-    return makers[fmt]()
-
-
-UNSUPPORTED_CONVERSIONS = (
-    (
-        "to_cirq_result on CUDAQ_SAMPLE_RESULT_JSON_V1",
-        lambda: _qpr(Serialization.CUDAQ_SAMPLE_RESULT_JSON_V1).to_cirq_result(),
-    ),
-    (
-        "to_mimiq_qcsr on CUDAQ_SAMPLE_RESULT_JSON_V1",
-        lambda: _qpr(Serialization.CUDAQ_SAMPLE_RESULT_JSON_V1).to_mimiq_qcsr(),
-    ),
-    (
-        "to_cudaq_sample_result on CIRQ_RESULT_JSON_V1",
-        lambda: _qpr(Serialization.CIRQ_RESULT_JSON_V1).to_cudaq_sample_result(),
-    ),
-    (
-        "to_cudaq_sample_result on QISKIT_RESULT_JSON_V1",
-        lambda: _qpr(Serialization.QISKIT_RESULT_JSON_V1).to_cudaq_sample_result(),
-    ),
-    (
-        "to_cudaq_sample_result on MIMIQ_QCSR_JSON_V1",
-        lambda: _qpr(Serialization.MIMIQ_QCSR_JSON_V1).to_cudaq_sample_result(),
-    ),
-    (
-        "to_cirq_result on PERCEVAL_RESULT_JSON_V1",
-        lambda: _qpr(Serialization.PERCEVAL_RESULT_JSON_V1).to_cirq_result(),
-    ),
-    (
-        "to_qiskit_result on PERCEVAL_RESULT_JSON_V1",
-        lambda: _qpr(Serialization.PERCEVAL_RESULT_JSON_V1).to_qiskit_result(),
-    ),
-    (
-        "to_cudaq_sample_result on PERCEVAL_RESULT_JSON_V1",
-        lambda: _qpr(Serialization.PERCEVAL_RESULT_JSON_V1).to_cudaq_sample_result(),
-    ),
-    (
-        "to_perceval_result on CIRQ_RESULT_JSON_V1",
-        lambda: _qpr(Serialization.CIRQ_RESULT_JSON_V1).to_perceval_result(),
-    ),
-    (
-        "to_perceval_result on QISKIT_RESULT_JSON_V1",
-        lambda: _qpr(Serialization.QISKIT_RESULT_JSON_V1).to_perceval_result(),
-    ),
-    (
-        "to_perceval_result on CUDAQ_SAMPLE_RESULT_JSON_V1",
-        lambda: _qpr(Serialization.CUDAQ_SAMPLE_RESULT_JSON_V1).to_perceval_result(),
-    ),
-    (
-        "to_perceval_result on MIMIQ_QCSR_JSON_V1",
-        lambda: _qpr(Serialization.MIMIQ_QCSR_JSON_V1).to_perceval_result(),
-    ),
-    # Pulser: ``pulser_result_json_v1`` is only read back by pulser and reads
-    # nothing else, so every cross target is forbidden today.
-    (
-        "to_cirq_result on PULSER_RESULT_JSON_V1",
-        lambda: _qpr(Serialization.PULSER_RESULT_JSON_V1).to_cirq_result(),
-    ),
-    (
-        "to_qiskit_result on PULSER_RESULT_JSON_V1",
-        lambda: _qpr(Serialization.PULSER_RESULT_JSON_V1).to_qiskit_result(),
-    ),
-    (
-        "to_mimiq_qcsr on PULSER_RESULT_JSON_V1",
-        lambda: _qpr(Serialization.PULSER_RESULT_JSON_V1).to_mimiq_qcsr(),
-    ),
-    (
-        "to_cudaq_sample_result on PULSER_RESULT_JSON_V1",
-        lambda: _qpr(Serialization.PULSER_RESULT_JSON_V1).to_cudaq_sample_result(),
-    ),
-    (
-        "to_perceval_result on PULSER_RESULT_JSON_V1",
-        lambda: _qpr(Serialization.PULSER_RESULT_JSON_V1).to_perceval_result(),
-    ),
-    (
-        "to_pulser_result on CIRQ_RESULT_JSON_V1",
-        lambda: _qpr(Serialization.CIRQ_RESULT_JSON_V1).to_pulser_result(),
-    ),
-    (
-        "to_pulser_result on QISKIT_RESULT_JSON_V1",
-        lambda: _qpr(Serialization.QISKIT_RESULT_JSON_V1).to_pulser_result(),
-    ),
-    (
-        "to_pulser_result on CUDAQ_SAMPLE_RESULT_JSON_V1",
-        lambda: _qpr(Serialization.CUDAQ_SAMPLE_RESULT_JSON_V1).to_pulser_result(),
-    ),
-    (
-        "to_pulser_result on MIMIQ_QCSR_JSON_V1",
-        lambda: _qpr(Serialization.MIMIQ_QCSR_JSON_V1).to_pulser_result(),
-    ),
-    (
-        "to_pulser_result on PERCEVAL_RESULT_JSON_V1",
-        lambda: _qpr(Serialization.PERCEVAL_RESULT_JSON_V1).to_pulser_result(),
-    ),
-    # Last on purpose: ``to_mimiq_qcsr`` pulls mimiqcircuits (its converters
-    # are imported before the format lookup), which conflicts with Perceval's
-    # ``circuit.proto`` in the perceval-only invocation; running it last means
-    # every perceval positive/negative has already completed.
-    (
-        "to_mimiq_qcsr on PERCEVAL_RESULT_JSON_V1",
-        lambda: _qpr(Serialization.PERCEVAL_RESULT_JSON_V1).to_mimiq_qcsr(),
-    ),
-)
+SDKS = dict(SDK_RESULTS)
+EDGES = _edge_rows()
+UNSUPPORTED_CONVERSIONS = _to_negatives()

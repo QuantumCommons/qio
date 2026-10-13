@@ -17,8 +17,8 @@ counterpart of `tests/src/circuit_conversion`, applied to measurement results.
   qio's own converters (single source of truth).
 - **Input results are static and trusted** : a `ReferenceResult` describes an
   *already executed* run as a counts histogram `{bitstring: count}` plus a shot
-  count, exposed identically in every SDK by the `.cirq()`, `.qiskit()`,
-  `.cudaq()`, `.mimiq()` builders. It is not re-checked.
+  count, exposed identically in every SDK by the per-SDK adapters
+  (`ResultSDK.build(reference)`). It is not re-checked.
 - **Bit-exact comparison** : a fixed bitstring convention (character `k` is
   the measured value of qubit `k` on the source circuit) means every converter
   only re-serializes those bitstrings, so the counts histograms must match
@@ -36,8 +36,9 @@ counterpart of `tests/src/circuit_conversion`, applied to measurement results.
 
 | File | Role |
 |---|---|
-| `reference_results.py` | Static `ReferenceResult` fixtures + SDK builders (with the full execution metadata). |
-| `result_testing.py` | Per-SDK checks, metadata probes, loss tracking, registries `build_edges()` / `UNSUPPORTED_CONVERSIONS`. |
+| `reference_results.py` | Static `ReferenceResult` fixtures (pure data: counts + execution metadata, no SDK). |
+| `result_sdks/` | One `ResultSDK` subclass per SDK (input builder, format check, probes, dict converter, wrap/read classmethods, inherent losses). |
+| `result_testing.py` | Driver: loss tracking, `ResultSDK` base class, `build_edges()` / `UNSUPPORTED_CONVERSIONS` registries derived from `EDGES`. |
 | `conftest.py` | `pytest_terminal_summary`: prints the observed information losses. |
 | `test_result_conversions.py` | Parametrized battery: edges × results × compressions. |
 
@@ -57,6 +58,7 @@ cirq.Result   -> cirq_result_json_v1   -> mimiqcircuits.QCSResults
 | CUDA-Q | `cudaq.SampleResult` |
 | MIMIQ | `mimiqcircuits.QCSResults` |
 | Perceval | `pcvl.BSSamples` |
+| Pulser | `pulser.backend.Results` |
 
 | Format | Label |
 |---|---|
@@ -65,15 +67,17 @@ cirq.Result   -> cirq_result_json_v1   -> mimiqcircuits.QCSResults
 | `CUDAQ_SAMPLE_RESULT_JSON_V1` | `cudaq_sample_result_json_v1` |
 | `MIMIQ_QCSR_JSON_V1` | `mimiq_qcsr_json_v1` |
 | `PERCEVAL_RESULT_JSON_V1` | `perceval_result_json_v1` |
+| `PULSER_RESULT_JSON_V1` | `pulser_result_json_v1` |
 
 Current graph (read-back): `cirq_result_json_v1` → cirq/qiskit/mimiq ;
 `qiskit_result_json_v1` → qiskit/cirq/mimiq ;
 `cudaq_sample_result_json_v1` → cudaq/qiskit ;
 `mimiq_qcsr_json_v1` → mimiq/cirq/qiskit ;
-`perceval_result_json_v1` → perceval (self, the only reader today).
-Completed by `UNSUPPORTED_CONVERSIONS` for the forbidden arcs
-(e.g. `to_cirq_result on cudaq_sample_result_json_v1`, `to_cirq_result on
-perceval_result_json_v1`).
+`perceval_result_json_v1` → perceval (self, the only reader today) ;
+`pulser_result_json_v1` → pulser (self, the only reader today).
+Completed by `UNSUPPORTED_CONVERSIONS` - the **complement** of the declared
+read graph - for the forbidden arcs (e.g. `to_cirq_result on
+cudaq_sample_result_json_v1`, `to_perceval_result on perceval_result_json_v1`).
 
 ## Flow of one edge
 
@@ -106,11 +110,10 @@ Constraints imposed by the intermediate (plain JSON/zlib):
 Losses declared today (each category is described by `loss_description`):
 `measurement_key`, `bit_order`, `cirq_params`, `qiskit_metadata`,
 `qiskit_statevector`, `mimiq_metadata`, `mimiq_amplitudes`, `cudaq_register`.
-They are declared through the `known_losses` of each `add(...)` call plus
-`_SOURCE_STATIC_LOSSES` (`cirq_params` auto-joined on every cirq source).
-Removing a category from an edge's `known_losses` fails the corresponding
-probe (turning a documented loss into a regression that forces a converter
-fix).
+They are declared on the adapters: `target_losses` of the arriving SDK (e.g.
+`cirq_params` auto-joined to every edge departing from cirq) plus removal of a
+category from an edge's `known_losses` fails the corresponding probe (turning a
+documented loss into a regression that forces a converter fix).
 
 ## How to add a result
 
@@ -133,62 +136,61 @@ ReferenceResult(
 
 - `sum(counts) == shots` and every bitstring has length `n_qubits`
   (validated in `__post_init__`).
-- The matching SDK builder is automatic; fill the execution metadata so that
-  the losses stay visible.
+- The SDK objects are built automatically by the adapters; fill the execution
+  metadata so that the losses stay visible.
 
 ## How to add a conversion (an edge)
 
-An edge is a **single declarative call** in `build_edges()`, exactly like the
-circuit battery: `add(edge_id, input_kind, read_fn, read_check,
-known_losses=())`. The write-side steps (SDK object -> `<sdk>_to_dict` checked
--> `from_<sdk>_result_dict` wrap checked) are derived automatically from the
-`input_kind` (which produces the intermediate format), and the annotated
-`edge_id` is written out in full.
+An edge is declared by adding one read target to `EDGES` in
+`result_testing.py`:
 
-Example — declaring a new arc `qiskit.Result -> mimiq_qcsr_json_v1 ->
-qiskit.Result`:
 ```python
-add(
-    "qiskit.Result -> mimiq_qcsr_json_v1 -> qiskit.Result",
-    "qiskit",
-    QuantumProgramResult.to_qiskit_result,
-    check_qiskit,
-    (LOSS_QISKIT_METADATA, LOSS_QISKIT_STATEVECTOR),
-)
+# result_testing.py
+def _edge_rows():
+    ...
+    return (
+        (cirq,  (cirq, qiskit, mimiq)),      # cirq_result_json_v1 -> cirq/qiskit/mimiq
+        ...
+    )
 ```
-- `known_losses` are the losses inherent to that path: any deviation in another
-  category fails the test (regression). Per-source static losses (e.g.
-  `cirq_params` for cirq inputs) are auto-joined by `add()` via
-  `_SOURCE_STATIC_LOSSES`, no need to repeat them.
-- `add()` composes the steps (write then read) and generates the arc for every
-  result × compression. Nothing else to edit.
+
+`build_edges()` expands `EDGES` into one `ConversionEdge` per target: the input
+SDK produces its intermediate format (write steps: `<sdk>_to_dict` checked ->
+`from_<sdk>_result_dict` wrap checked), each target becomes a read step
+(`to_<target>_result` + its `check`), and `known_losses` = the target's
+`target_losses` + the input's `static_source_losses`.
+`UNSUPPORTED_CONVERSIONS` is then recomputed automatically as the complement of
+the graph, so the negative cases never need editing by hand.
 
 ## How to add an SDK
 
-- **Input side**:
-  - a `ReferenceResult.<sdk>()` builder in `reference_results.py`,
-  - `_input_fn` + `_INPUT_FORMAT[kind] = Serialization.<fmt>` (the unique
-    format this source produces),
-  - `_TO_DICT`/`_FROM_DICT` (if the SDK has a dict classmethod) and a branch in
-    `check_to_dict` (or the direct `from_<sdk>_result_dict` path, as for
-    CUDA-Q).
-- **Read-back side**: call `add(...)` with `to_<sdk>_result` and
-  `check_<sdk>`; implement `check_<sdk>` (exact counts + probes) and its
-  `Probe`s (otherwise no metadata is verified).
-- SDKs are imported lazily inside the checks and the converters (the
-  `*_to_dict` converters are resolved by `_LazyFn` on first call, never at
-  collection), so adding an SDK never changes what collection imports;
-  on the `qio` side converters are imported inside the methods, so no SDK is
-  required at import time.
+An SDK is one class + one register line; nothing in the driver changes.
+
+1. Create `result_sdks/<sdk>.py` with a `ResultSDK` subclass:
+   - facts: `kind`, `display`, `fmt`/`fmt_label`, `dict_keys` (mandatory keys
+     of the intermediate dict), `to_dict_module` (or `None` for the direct
+     wrap path, as for CUDA-Q), `from_dict`/`wrap`/`read` classmethods,
+     `target_losses`/`static_source_losses`, `probes`,
+   - `build(reference)` stores the static SDK input object,
+   - `check(result, expected)` validates the type, the bit-exact counts and the
+     metadata probes.
+2. Register it in the `result_sdks/__init__.py` `ALL_SDKS` tuple.
+3. Add its read targets in the `EDGES` table in `result_testing.py`.
+
+- All SDK imports stay lazy (inside `build`/`check`; the `*_to_dict` converters
+  are resolved by `_LazyFn` on first call), so collection never imports an SDK.
 - **Perceval (photonic) leg — separate pytest invocation**: mimiqcircuits and
   Perceval both register a `circuit.proto` in protobuf's global descriptor
   pool, so they cannot be imported in the same Python process (either order).
   The perceval leg (the `perceval.BSSamples -> perceval_result_json_v1 ->
-  perceval.BSSamples` edge and the `... on PERCEVAL_RESULT_JSON_V1` / 
-  `to_perceval_result on ...` negatives) is therefore selected with
-  `-k "perceval"` and runs in the perceval-only invocation; the main invocation
-  uses `-k "not perceval"`. Both use the exact same node ids, which always
-  contain `perceval` for this leg.
+  perceval.BSSamples` edge and every negative on/from `..._PERCEVAL...`) is
+  therefore selected with `-k "perceval"` and runs in the perceval-only
+  invocation; the main invocation uses `-k "not perceval"`. Both use the exact
+  same node ids, which always contain `perceval` for this leg. The two
+  negatives that would pull mimiqcircuits into that process
+  (`to_mimiq_qcsr on PERCEVAL_RESULT_JSON_V1`,
+  `to_perceval_result on MIMIQ_QCSR_JSON_V1`) are pinned last by
+  `_to_negatives()`.
 
 ## Running
 
