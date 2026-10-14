@@ -76,6 +76,17 @@ input_fn(circuit) ─► write (QuantumProgram.from_<sdk>_circuit,
   serialization exactly, then the re-emitted QASM2 via
   `check_qasm_cudaq_documented`, gate-basis rewrites being *recorded* as the
   `cudaq_gate_decomposition` loss), and the `unitary` oracle closes every loop.
+- **CUDA-Q leg gate limitations** : CUDA-Q's OpenQASM 2 printer (`getASM`)
+  cannot emit a call to a sub-kernel carrying float parameters
+  (`failed to emit parameters`; reproduced on the cp310 build of
+  `cuda-quantum-cu12 0.12.0.post1`, i.e. under Python 3.10 as used by CI).
+  `qasm3_to_cudaq` therefore inlines the standard single-qubit parameterized
+  gates (`rx/ry/rz/u3`) directly on the main kernel (`rx(angle, qubit)`), which
+  emits fine — this is transparent for the battery. **Controlled rotations**
+  (`crx/cry/crz`) would hit the same printer bug on the CUDA-Q leg, so they are
+  **not supported there** and are deliberately left out of the reference gate
+  set (`_TWO_QUBIT_GATES` restricts two-qubit gates to `cx`/`cz`).
+
 - Perceval has no unitary either: the `"photonic"` oracle simulates the final
   circuit with Perceval's SLOS backend on the spec's Fock input state (with the
   heralded CNOT's ancilla seeded), post-selects the heralds, and requires the
@@ -114,7 +125,9 @@ Current ids are of the form `cirq->qasm2->cirq`, `qiskit->qasm3->cudaq`,
 
 Supported gate set: `h, x, y, z, s, t, sdg, tdg, rx, ry, rz, cx, cz, measure`.
 The parameterized gates are `rx/ry/rz`; a symbolic parameter is encoded as the
-string marker `"~<name>"` (see the `parametrized` circuit).
+string marker `"~<name>"` (see the `parametrized` circuit). Controlled rotations
+(`crx/cry/crz`) are **excluded** from the set: the CUDA-Q leg cannot re-emit
+them (see the *CUDA-Q leg gate limitations* note above).
 
 ## How to add a circuit
 
