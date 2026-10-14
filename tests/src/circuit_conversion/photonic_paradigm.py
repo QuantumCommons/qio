@@ -15,12 +15,14 @@
 
 Concrete :class:`Paradigm` of the *photonic* circuits: the static reference
 circuits (``ph_h``, ``ph_mzi``, ``ph_cnot``, ``ph_bell``) described as
-:class:`PhotonicSpec` mode-based specs, the single round-trip edge
-(``perceval -> percevaljson -> perceval`` - like the analog one, qio only maps
-the perceval serialization to/from ``perceval.Circuit``) and the Perceval SDK
-checks. Semantic equivalence is closed by the ``"photonic"`` oracle (registered
-in :data:`EXTRA_ORACLES`): the exact post-selected SLOS output distribution of
-the round-tripped circuit must equal the reference's, computed on the native
+:class:`PhotonicSpec` mode-based specs, the two round-trip edges
+(``perceval -> percevaljson -> perceval`` for ``perceval.Circuit`` and
+``perceval_experiment -> percevaljson -> perceval_experiment`` for
+``perceval.Experiment`` - like the analog one, qio only maps the perceval
+serialization to/from these two wrappers) and the Perceval SDK checks.
+Semantic equivalence is closed by the ``"photonic"`` oracle (registered in
+:data:`EXTRA_ORACLES`): the exact post-selected SLOS output distribution of
+the round-tripped object must equal the reference's, computed on the native
 Fock input state (with the heralded CNOT's ancilla seeded).
 
 Perceval and mimiqcircuits both register a ``circuit.proto`` in protobuf's
@@ -68,10 +70,12 @@ def _decode(source: str):
 
 def _simulate_probs(circuit, spec: PhotonicSpec) -> Dict[Any, float]:
     """Exact post-selected output distribution (mode -> probability) of
-    ``circuit`` fed with the spec's Fock input state.
+    ``circuit`` fed with the spec's Fock input state. When ``circuit`` is a
+    ``perceval.Experiment``, its own input state and heralds are used instead
+    of the spec's.
 
     Uses Perceval's SLOS backend (exact interference simulation, no sampling
-    noise) with the spec's herald post-selection: ``set_heralds`` + 
+    noise) with the herald post-selection: ``set_heralds`` + 
     ``keep_heralds(False)`` drops the herald modes from the returned states, so
     the distribution is over the data modes only.
     """
@@ -80,20 +84,28 @@ def _simulate_probs(circuit, spec: PhotonicSpec) -> Dict[Any, float]:
     from perceval.backends import SLOSBackend
 
     simulator = Simulator(backend=SLOSBackend())
-    simulator.set_circuit(circuit)
-    if spec.heralds:
-        simulator.set_heralds(dict(spec.heralds))
+    if isinstance(circuit, pcvl.Experiment):
+        simulator.set_circuit(circuit.unitary_circuit())
+        heralds = circuit.heralds
+        input_state = circuit.input_state
+    else:
+        simulator.set_circuit(circuit)
+        heralds = spec.heralds
+        input_state = pcvl.BasicState(list(spec.input_state))
+    if heralds:
+        simulator.set_heralds(dict(heralds))
     simulator.keep_heralds(False)
-    probs = simulator.probs(pcvl.BasicState(list(spec.input_state)))
+    probs = simulator.probs(input_state)
     return {state: float(prob) for state, prob in probs.items()}
 
 
 def assert_photonic_probs(result, expected: ReferenceCircuit) -> None:
-    """The ``"photonic"`` oracle: the round-tripped ``perceval.Circuit`` must
-    produce the exact same post-selected output distribution as the statically
-    built reference circuit (both simulated with SLOS on the spec's input
-    state). Guards every step of the ``perceval -> percevaljson -> perceval``
-    round trip semantically without sampling noise."""
+    """The ``"photonic"`` oracle: the round-tripped ``perceval.Circuit`` (or
+    ``perceval.Experiment``) must produce the exact same post-selected output
+    distribution as the statically built reference circuit (both simulated with
+    SLOS on the spec's input state - the experiment's own input state/heralds
+    for the experiment edge). Guards every step of the perceval round trips
+    semantically without sampling noise."""
     import math
 
     spec = expected.photonic
@@ -151,12 +163,41 @@ def check_perceval_json(result, expected: Optional[ReferenceCircuit] = None) -> 
     assert _encode(circuit) == source
 
 
+def check_perceval_experiment(result, expected: Optional[ReferenceCircuit] = None) -> None:
+    import perceval as pcvl
+
+    assert isinstance(result, pcvl.Experiment), f"expected perceval Experiment, got {type(result)}"
+    if expected is not None:
+        assert result.circuit_size == expected.n_modes, (result.circuit_size, expected.n_modes)
+        assert _encode(result) == _encode(expected.perceval_experiment()), (
+            "round-tripped perceval experiment differs from the reference"
+        )
+
+
+def check_perceval_experiment_json(result, expected: Optional[ReferenceCircuit] = None) -> None:
+    import perceval as pcvl
+
+    source = _resolve_serialization(result)
+    assert source, "empty perceval serialization"
+    experiment = _decode(source)
+    assert isinstance(experiment, pcvl.Experiment), type(experiment)
+    if expected is not None:
+        assert experiment.circuit_size == expected.n_modes, (experiment.circuit_size, expected.n_modes)
+    assert _encode(experiment) == source
+
+
 def _ph_cnot():
     return get_reference_circuit("ph_cnot").perceval()
 
 
 def _perceval_program(dest_format: Serialization) -> QuantumProgram:
     return QuantumProgram.from_perceval_circuit(_ph_cnot(), dest_format=dest_format)
+
+
+def _perceval_experiment_program(dest_format: Serialization) -> QuantumProgram:
+    return QuantumProgram.from_perceval_experiment(
+        get_reference_circuit("ph_cnot").perceval_experiment(), dest_format=dest_format
+    )
 
 
 class PhotonicParadigm(Paradigm):
@@ -240,21 +281,24 @@ class PhotonicParadigm(Paradigm):
     )
     input_fns = {
         "perceval": lambda c: c.perceval(),
+        "perceval_experiment": lambda c: c.perceval_experiment(),
     }
 
     def content_checks(self, fmt: Serialization) -> Tuple[Callable, ...]:
         if fmt in (Serialization.PERCEVAL_CIRCUIT_JSON_V1,):
             return (check_perceval_json,)
+        if fmt in (Serialization.PERCEVAL_EXPERIMENT_JSON_V1,):
+            return (check_perceval_experiment_json,)
         return ()
 
     def build_edges(self, compression: Compression):
-        # Closed self-round-trip (like the analog paradigm): qio only maps the
-        # perceval serialization to/from ``perceval.Circuit``, so there is
-        # exactly one edge. The perceval round trip is lossless at the checked
-        # level (canonical serialization: ``check_perceval_json`` +
-        # ``check_perceval`` assert byte-exact equality), and its semantics are
-        # enforced by the "photonic" oracle (exact post-selected SLOS
-        # distribution).
+        # Closed self-round-trips (like the analog paradigm): qio only maps
+        # the perceval serialization to/from ``perceval.Circuit`` and
+        # ``perceval.Experiment``, so there is one edge per wrapper. The
+        # perceval round trip is lossless at the checked level (canonical
+        # serialization: the ``check_*`` content checks assert byte-exact
+        # equality), and its semantics are enforced by the "photonic" oracle
+        # (exact post-selected SLOS distribution).
         edges = [
             self.ConversionEdge(
                 "perceval->percevaljson->perceval",
@@ -272,6 +316,28 @@ class PhotonicParadigm(Paradigm):
                     ),
                     self.Step(
                         QuantumProgram.to_perceval_circuit, {}, (check_perceval,)
+                    ),
+                ),
+                oracle="photonic",
+                known_losses=(),
+                paradigm=self.name,
+            ),
+            self.ConversionEdge(
+                "perceval_experiment->percevaljson->perceval_experiment",
+                "perceval_experiment",
+                self.input_fns["perceval_experiment"],
+                (
+                    self.Step(
+                        QuantumProgram.from_perceval_experiment,
+                        {
+                            "dest_format": Serialization.PERCEVAL_EXPERIMENT_JSON_V1,
+                            "compression_format": compression,
+                        },
+                        (check_program(Serialization.PERCEVAL_EXPERIMENT_JSON_V1),)
+                        + self.content_checks(Serialization.PERCEVAL_EXPERIMENT_JSON_V1),
+                    ),
+                    self.Step(
+                        QuantumProgram.to_perceval_experiment, {}, (check_perceval_experiment,)
                     ),
                 ),
                 oracle="photonic",
@@ -312,6 +378,59 @@ class PhotonicParadigm(Paradigm):
             "to_qasm2_circuit on PERCEVALJSON",
             lambda: _perceval_program(Serialization.PERCEVAL_CIRCUIT_JSON_V1).to_qasm2_circuit(),
         ),
+        (
+            "from_perceval_experiment -> QASM_V2",
+            lambda: QuantumProgram.from_perceval_experiment(
+                get_reference_circuit("ph_cnot").perceval_experiment(),
+                dest_format=Serialization.QASM_V2,
+            ),
+        ),
+        (
+            "to_perceval_circuit on PERCEVAL_EXPERIMENTJSON",
+            lambda: _perceval_experiment_program(
+                Serialization.PERCEVAL_EXPERIMENT_JSON_V1
+            ).to_perceval_circuit(),
+        ),
+        (
+            "to_perceval_experiment on PERCEVALJSON",
+            lambda: _perceval_program(Serialization.PERCEVAL_CIRCUIT_JSON_V1).to_perceval_experiment(),
+        ),
+        (
+            "to_qiskit_circuit on PERCEVAL_EXPERIMENTJSON",
+            lambda: _perceval_experiment_program(
+                Serialization.PERCEVAL_EXPERIMENT_JSON_V1
+            ).to_qiskit_circuit(),
+        ),
+        (
+            "to_cirq_circuit on PERCEVAL_EXPERIMENTJSON",
+            lambda: _perceval_experiment_program(
+                Serialization.PERCEVAL_EXPERIMENT_JSON_V1
+            ).to_cirq_circuit(),
+        ),
+        (
+            "to_mimiq_circuit on PERCEVAL_EXPERIMENTJSON",
+            lambda: _perceval_experiment_program(
+                Serialization.PERCEVAL_EXPERIMENT_JSON_V1
+            ).to_mimiq_circuit(),
+        ),
+        (
+            "to_cudaq_kernel on PERCEVAL_EXPERIMENTJSON",
+            lambda: _perceval_experiment_program(
+                Serialization.PERCEVAL_EXPERIMENT_JSON_V1
+            ).to_cudaq_kernel(),
+        ),
+        (
+            "to_pulser_sequence on PERCEVAL_EXPERIMENTJSON",
+            lambda: _perceval_experiment_program(
+                Serialization.PERCEVAL_EXPERIMENT_JSON_V1
+            ).to_pulser_sequence(),
+        ),
+        (
+            "to_qasm2_circuit on PERCEVAL_EXPERIMENTJSON",
+            lambda: _perceval_experiment_program(
+                Serialization.PERCEVAL_EXPERIMENT_JSON_V1
+            ).to_qasm2_circuit(),
+        ),
     )
 
     feature_coverage = (
@@ -328,5 +447,15 @@ class PhotonicParadigm(Paradigm):
             "condition and the post-selection are part of the PhotonicSpec and "
             "are re-applied by the oracle *outside* qio, so a full photonic "
             "processor configuration is out of the qio formats",
+        ),
+        (
+            "photonic experiment context (input state + heralds)",
+            "round-trip tested",
+            "the perceval.Experiment archive carries the Fock input state and "
+            "the output herald post-selection alongside the circuit; the "
+            "'perceval_experiment->percevaljson->perceval_experiment' edge "
+            "round-trips them exactly and the shared 'photonic' oracle "
+            "simulates from the experiment's own context (no re-application by "
+            "the test)",
         ),
     )

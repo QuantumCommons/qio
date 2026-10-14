@@ -588,6 +588,32 @@ class PhotonicSpec:
                 raise NotImplementedError(f"unsupported photonic block: {gate.kind}")
         return qc
 
+    def experiment(self) -> "perceval.Experiment":
+        from perceval import BasicState
+        from perceval.components import BS, PS, Experiment, PortLocation
+        from perceval.components.core_catalog import HeraldedCnotItem
+
+        exp = Experiment(self.n_modes, name=self.name)
+        for gate in self.gates:
+            if gate.kind == "bs":
+                exp.add(gate.modes, BS(*gate.params))
+            elif gate.kind == "ps":
+                exp.add(gate.modes, PS(*gate.params))
+            elif gate.kind == "heralded_cnot":
+                control, data = gate.qubits
+                ancilla = 2 * self.n_qubits
+                cnot = HeraldedCnotItem().build_circuit()
+                exp.add(
+                    (2 * control, 2 * control + 1, 2 * data, 2 * data + 1, ancilla, ancilla + 1),
+                    cnot,
+                )
+            else:
+                raise NotImplementedError(f"unsupported photonic block: {gate.kind}")
+        exp.with_input(BasicState(list(self.input_state)))
+        for mode, expected in self.heralds.items():
+            exp.add_herald(mode, expected, location=PortLocation.OUTPUT)
+        return exp
+
 
 class ReferenceCircuit:
     """A static, controlled input circuit: a paradigm-specific ``spec`` (one of
@@ -698,6 +724,9 @@ class ReferenceCircuit:
 
     def perceval(self) -> "perceval.Circuit":
         return self.spec.perceval()
+
+    def perceval_experiment(self) -> "perceval.Experiment":
+        return self.spec.experiment()
 
     def __repr__(self) -> str:
         return f"ReferenceCircuit({self.name!r}, paradigm={self.paradigm!r})"

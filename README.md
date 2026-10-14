@@ -162,6 +162,7 @@ flowchart LR
 | CUDA Quantum | `QuantumProgram.from_cudaq_kernel` | OpenQASM 2 (+ QIR via `cudaq_to_qir`) |
 | Pulser | `QuantumProgram.from_pulser_sequence` | Pulser JSON |
 | Perceval | `QuantumProgram.from_perceval_circuit` | Perceval JSON |
+| Perceval | `QuantumProgram.from_perceval_experiment` | Perceval Experiment JSON |
 
 | Target SDK | Read method | Supported input formats |
 |---|---|---|
@@ -171,6 +172,7 @@ flowchart LR
 | MIMIQ | `QuantumProgram.to_mimiq_circuit` | OpenQASM 2 |
 | Pulser | `QuantumProgram.to_pulser_sequence` | Pulser JSON |
 | Perceval | `QuantumProgram.to_perceval_circuit` | Perceval JSON |
+| Perceval | `QuantumProgram.to_perceval_experiment` | Perceval Experiment JSON |
 
 ## qio result conversion mapping
 

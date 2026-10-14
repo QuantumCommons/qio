@@ -106,7 +106,10 @@ Current ids are of the form `cirq->qasm2->cirq`, `qiskit->qasm3->cudaq`,
 - Analog: `pulser->pulserjson->pulser` (analog-paradigm circuits only).
 - Photonic: `perceval->percevaljson->perceval` (photonic-paradigm circuits
   only) - closed self-round-trip, like the analog one: qio only maps the
-  Perceval serialization to/from `perceval.Circuit`.
+  Perceval serialization to/from `perceval.Circuit`. Photonic *experiments*
+  (circuit + Fock input state + herald post-selection) round trip through
+  `perceval_experiment->percevaljson->perceval_experiment` (the same archive,
+  `PERCEVAL_EXPERIMENT_JSON_V1`).
 - *Unsupported* cases (e.g. `from_cudaq_kernel -> CIRQJSON`,
   `to_mimiq_circuit on QASM_V3`, `to_cirq_circuit on PERCEVALJSON`) live in
   each paradigm's `unsupported_conversions` (aggregated into
@@ -122,6 +125,7 @@ Current ids are of the form `cirq->qasm2->cirq`, `qiskit->qasm3->cudaq`,
 | `CIRQ_CIRCUIT_JSON_V1` | `check_cirq_json` | `to_cirq_circuit` |
 | `PULSER_SEQUENCE_JSON_V1` | `check_pulser_json` | `to_pulser_sequence` |
 | `PERCEVAL_CIRCUIT_JSON_V1` | `check_perceval_json` | `to_perceval_circuit` |
+| `PERCEVAL_EXPERIMENT_JSON_V1` | `check_perceval_experiment_json` | `to_perceval_experiment` |
 
 Supported gate set: `h, x, y, z, s, t, sdg, tdg, rx, ry, rz, cx, cz, measure`.
 The parameterized gates are `rx/ry/rz`; a symbolic parameter is encoded as the

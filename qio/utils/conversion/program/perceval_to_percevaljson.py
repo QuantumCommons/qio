@@ -11,11 +11,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from typing import Union
+
 import perceval as pcvl
 from perceval.serialization import OutputArchive, Serialization
 
 
-def convert(pcvl_circuit: pcvl.Circuit):
+def convert(pcvl_circuit: Union[pcvl.Circuit, pcvl.Experiment]):
     output_archive = OutputArchive()
     Serialization.serialize(pcvl_circuit, output_archive)
     return output_archive.to_text()
