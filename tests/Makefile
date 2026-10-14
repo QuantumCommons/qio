@@ -14,10 +14,10 @@ install-perceval:
 	export PYTHONPATH=/src
 
 .PHONY: test
-test:
+test: test-conv-perceval
 	pytest -s --showprogress -vv src/ -k "not perceval"
 
-.PHONY: test-perceval
+.PHONY: test-conv-perceval
 test-conv-perceval:
 	pytest -s --showprogress -vv src/circuit_conversion/ src/result_conversion/ -k "perceval"
 
@@ -25,7 +25,7 @@ test-conv-perceval:
 test-circuit-conv:
 	pytest -s --showprogress -vv src/circuit_conversion/ -k "not perceval"
 
-.PHONY: test-circuit-perceval
+.PHONY: test-circuit-conv-perceval
 test-circuit-conv-perceval:
 	pytest -s --showprogress -vv src/circuit_conversion/ -k "perceval"
 

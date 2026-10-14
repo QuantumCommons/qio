@@ -25,6 +25,14 @@ from qio.core import (
 from reference_results import ReferenceResult
 from result_testing import ResultSDK, _assert_counts
 
+# Fixed execution facts of the ``from_final_bitstrings`` builder below: the
+# atom id order matches the battery's bitstring convention (character k is
+# qubit k) and the sequence duration is synthetic. They are asserted on the
+# output object on purpose: a converter that reordered the atoms (or dropped
+# the duration) would silently change the physical meaning of the counts while
+# leaving the histogram itself intact.
+_TOTAL_DURATION = 1000
+
 
 class PulserSDK(ResultSDK):
     kind = "pulser"
@@ -42,7 +50,7 @@ class PulserSDK(ResultSDK):
 
         return Results.from_final_bitstrings(
             atom_order=tuple(f"q{k}" for k in range(reference.n_qubits)),
-            total_duration=1000,
+            total_duration=_TOTAL_DURATION,
             final_bitstrings=dict(reference.counts),
         )
 
@@ -52,6 +60,13 @@ class PulserSDK(ResultSDK):
         assert isinstance(result, Results), f"expected pulser.backend.Results, got {type(result)}"
         if expected is not None:
             _assert_counts(dict(result.final_bitstrings), expected)
+            assert tuple(result.atom_order) == tuple(
+                f"q{k}" for k in range(expected.n_qubits)
+            ), (result.atom_order, expected.n_qubits)
+            assert result.total_duration == _TOTAL_DURATION, (
+                result.total_duration,
+                _TOTAL_DURATION,
+            )
 
 
 SDK = PulserSDK()

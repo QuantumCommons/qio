@@ -323,6 +323,10 @@ class PhotonicParadigm(Paradigm):
             "ancilla) round trip exactly through the perceval serialization on "
             "the 'perceval->percevaljson->perceval' edge; the 'photonic' "
             "oracle compares the exact post-selected SLOS output distribution "
-            "before/after",
+            "before/after. NOTE: the intermediate QuantumProgram carries only "
+            "the perceval.Circuit archive - the Fock input state, the herald "
+            "condition and the post-selection are part of the PhotonicSpec and "
+            "are re-applied by the oracle *outside* qio, so a full photonic "
+            "processor configuration is out of the qio formats",
         ),
     )

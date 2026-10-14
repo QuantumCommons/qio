@@ -55,6 +55,12 @@ def check_pulser(result, expected: Optional[ReferenceCircuit] = None) -> None:
     the gate op-chain comparison, and exact because the Pulser round trip is
     lossless. The ``analog_device`` loss guards the device object only (pulser
     1.9.1 preserves it; a future version dropping it is recorded, not fatal).
+
+    Measurement presence is compared against the reference sequence (not the
+    spec boolean): on a *parametrized* sequence pulser 1.9.1 defers
+    ``_measurement`` to build time (``None``) even though the measured basis is
+    faithfully carried in the abstract repr - the byte-exact equality below
+    covers it either way.
     """
     import pulser
 
@@ -71,11 +77,13 @@ def check_pulser(result, expected: Optional[ReferenceCircuit] = None) -> None:
         set(result.declared_channels),
         set(spec.channels),
     )
-    assert bool(getattr(result, "_measurement", None)) == spec.measure, (
-        getattr(result, "_measurement", None),
-        spec.measure,
-    )
     reference_seq = expected.pulser()
+    assert bool(getattr(result, "_measurement", None)) == bool(
+        getattr(reference_seq, "_measurement", None)
+    ), (
+        getattr(result, "_measurement", None),
+        getattr(reference_seq, "_measurement", None),
+    )
     if result.device != reference_seq.device:
         record_loss(
             LOSS_ANALOG_DEVICE,
@@ -113,6 +121,32 @@ def _pulser_program(dest_format: Serialization) -> QuantumProgram:
     return QuantumProgram.from_pulser_sequence(
         _analog_global_pulser(), dest_format=dest_format
     )
+
+
+def _bare_variable_pulser() -> "pulser.Sequence":
+    """A sequence using a *bare* variable as a pulse amplitude.
+
+    Pulser 1.9.1 cannot serialize this to the abstract repr (the produced JSON
+    fails the schema validation - ``Sequence.to_abstract_repr`` raises
+    ``AbstractReprError``), so ``from_pulser_sequence`` on it must raise. This
+    is recorded as an expected unsupported conversion so that a future pulser
+    fixing the serialization makes the test fail loudly instead of silently
+    widening qio's pulser support.
+    """
+    from pulser import Pulse, Sequence
+    from pulser.devices import MockDevice
+    from pulser.register import Register
+    from pulser.waveforms import ConstantWaveform
+
+    seq = Sequence(Register.from_coordinates([(0, 0), (0, 10)], prefix="q"), MockDevice)
+    seq.declare_channel("rydberg", "rydberg_global")
+    x = seq.declare_variable("x", 1)
+    seq.add(
+        Pulse(ConstantWaveform(100, x), ConstantWaveform(100, 0.0), 0.0),
+        "rydberg",
+    )
+    seq.measure("ground-rydberg")
+    return seq
 
 
 class AnalogParadigm(Paradigm):
@@ -178,6 +212,30 @@ class AnalogParadigm(Paradigm):
                 ),
             ),
         ),
+        ReferenceCircuit(
+            AnalogSpec(
+                name="analog_param",
+                register_coords=[(0, 0), (0, 10)],
+                channels={"rydberg": "rydberg_global"},
+                variables=(("x", "float"),),
+                pulses=[
+                    PulseSpec(
+                        channel="rydberg",
+                        kind="constant",
+                        duration=100,
+                        amplitude="2*x + 0.5",
+                        phase="0.1*x",
+                    ),
+                ],
+                measure=True,
+                description=(
+                    "Parametrized 2-atom analog schedule on a global Rydberg "
+                    "channel: the amplitude and phase are *expressions* over the "
+                    "declared variable 'x' ('2*x+0.5', '0.1*x'), which round trip "
+                    "symbolically through the Pulser abstract repr."
+                ),
+            ),
+        ),
     )
     input_fns = {
         "pulser": lambda c: c.pulser(),
@@ -239,6 +297,13 @@ class AnalogParadigm(Paradigm):
             "to_cirq_circuit on PULSERJSON",
             lambda: _pulser_program(Serialization.PULSER_SEQUENCE_JSON_V1).to_cirq_circuit(),
         ),
+        (
+            "from_pulser_sequence on bare-variable pulse",
+            lambda: QuantumProgram.from_pulser_sequence(
+                _bare_variable_pulser(),
+                dest_format=Serialization.PULSER_SEQUENCE_JSON_V1,
+            ),
+        ),
     )
 
     feature_coverage = (
@@ -250,5 +315,14 @@ class AnalogParadigm(Paradigm):
             "edge: AnalogSpec (register coords, global/local channels, constant & "
             "Blackman pulses, measurement) round trips exactly through the "
             "Pulser abstract repr",
+        ),
+        (
+            "analog pulse parametrization",
+            "partial (expression round-trip)",
+            "variables declared on a sequence round trip symbolically when used "
+            "as *expressions* ('2*x+0.5' amplitude / '0.1*x' phase on the "
+            "analog_param circuit); a variable used *bare* as a pulse value "
+            "cannot be serialized by pulser 1.9.1 (AbstractReprError) and is "
+            "pinned as an expected unsupported conversion",
         ),
     )

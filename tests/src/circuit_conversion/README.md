@@ -262,7 +262,7 @@ Edges are built per paradigm, in that paradigm's `build_edges()`.
 
 ## Perceval / MIMIQ protobuf conflict
 
-`mimiqcircuits` and Perceval (via `exqalibur`) both compile a proto file named
+`mimiqcircuits` and Perceval (via `exqalibur`) both call for a proto file named
 `circuit.proto` into protobuf's *global* descriptor pool. Whichever SDK is
 imported second in a Python process fails with
 `TypeError: duplicate file name circuit.proto` - the two cannot coexist in one

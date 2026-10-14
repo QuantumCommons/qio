@@ -37,6 +37,8 @@ The gate set is restricted to gates supported by all converters
 single/multi qubit, parameterized gates, and measurements.
 """
 
+import re
+
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
@@ -106,6 +108,96 @@ PARADIGM_ANALOG = "analog"
 PARADIGM_PHOTONIC = "photonic"
 
 
+class _PulseExprParser:
+    """Whitelist evaluator for analog pulse parametrization.
+
+    Evaluates a small arithmetic subset (numbers, variable names, ``+ - * /``
+    and parentheses) against the pulser ``Variable``/``VariableItem`` objects
+    declared on a :class:`AnalogSpec`. The result is either a plain number (no
+    variable involved) or a pulser ``Parametrized`` expression (it keeps the
+    symbolic form, like ``2*x + 0.5``), which ``Sequence.to_abstract_repr``
+    serializes symbolically.
+    """
+
+    _NUMBER = r"\d+\.?\d*|\.\d+"
+    _NAME = r"[A-Za-z_][A-Za-z0-9_]*"
+    _TOKEN = re.compile(rf"\s*({_NUMBER}|{_NAME}|[()+\-*/])")
+
+    def __init__(self, text: str, variables: Dict[str, Any]):
+        self._text = text
+        self._variables = variables
+        self._tokens = [
+            m.group(1) for m in self._TOKEN.finditer(text)
+        ]
+        self._pos = 0
+
+    @property
+    def _peek(self) -> Optional[str]:
+        return self._tokens[self._pos] if self._pos < len(self._tokens) else None
+
+    def _take(self) -> str:
+        token = self._peek
+        if token is None:
+            raise ValueError(f"unexpected end of expression {self._text!r}")
+        self._pos += 1
+        return token
+
+    def parse(self) -> Any:
+        value = self._expr()
+        if self._peek is not None:
+            raise ValueError(
+                f"unexpected token {self._peek!r} in expression {self._text!r}"
+            )
+        return value
+
+    def _expr(self) -> Any:
+        value = self._term()
+        while self._peek in ("+", "-"):
+            operator = self._take()
+            rhs = self._term()
+            value = value + rhs if operator == "+" else value - rhs
+        return value
+
+    def _term(self) -> Any:
+        value = self._factor()
+        while self._peek in ("*", "/"):
+            operator = self._take()
+            rhs = self._factor()
+            value = value * rhs if operator == "*" else value / rhs
+        return value
+
+    def _factor(self) -> Any:
+        token = self._peek
+        if token is None:
+            raise ValueError(f"unexpected end of expression {self._text!r}")
+        if token == "(":
+            self._take()
+            value = self._expr()
+            if self._take() != ")":
+                raise ValueError(
+                    f"balanced parenthesis expected in expression {self._text!r}"
+                )
+            return value
+        if re.fullmatch(self._NUMBER, token):
+            return float(self._take())
+        if re.fullmatch(self._NAME, token):
+            name = self._take()
+            if name not in self._variables:
+                raise ValueError(
+                    f"undeclared variable {name!r} in expression {self._text!r}"
+                )
+            return self._variables[name]
+        raise ValueError(f"unexpected token {token!r} in expression {self._text!r}")
+
+
+def _parametrized_value(value: Union[float, str], variables: Dict[str, Any]) -> Any:
+    """Returns ``value`` unchanged when numeric, else builds the pulser
+    expression (symbolic) over the declared ``variables``."""
+    if isinstance(value, (int, float)):
+        return value
+    return _PulseExprParser(value, variables).parse()
+
+
 @dataclass
 class PulseSpec:
     """A single pulse on one channel of an analog schedule.
@@ -113,14 +205,21 @@ class PulseSpec:
     ``kind`` describes the amplitude waveform shape ("constant" | "blackman").
     ``target`` is the qubit id (e.g. "q0") the pulse is addressed to - only
     meaningful on local-addressing channels, None on global channels.
+
+    ``amplitude``, ``detuning`` and ``phase`` are either plain numbers or an
+    arithmetic expression (subset: ``+ - * /``, parentheses, numbers and
+    variables declared on the enclosing :class:`AnalogSpec`, e.g. ``"2*x+0.5"``)
+    making the pulse symbolic. Symbolic pulse values are kept in Pulser's
+    parametrized form and round trip through the abstract repr; a bare variable
+    used directly as a value (e.g. ``"x"``) currently raises in Pulser 1.9.1.
     """
 
     channel: str
     kind: str
     duration: int
-    amplitude: float
-    detuning: float = 0.0
-    phase: float = 0.0
+    amplitude: Union[float, str]
+    detuning: Union[float, str] = 0.0
+    phase: Union[float, str] = 0.0
     target: Optional[str] = None
 
 
@@ -336,6 +435,7 @@ class AnalogSpec:
     channels: Dict[str, str]  # channel name -> pulser channel type ("rydberg_global", ...)
     pulses: List[PulseSpec]
     measure: bool = False
+    variables: Tuple[Tuple[str, str], ...] = ()  # (name, dtype) declared on the sequence
     description: str = field(default="")
     oracle: str = field(default="structural")
 
@@ -366,35 +466,46 @@ class AnalogSpec:
         The construction uses the minimal Pulser information carried by the
         spec: coordinates -> ``Register.from_coordinates``, channels ->
         ``declare_channel`` and pulses -> ``seq.add`` (local pulses target the
-        atom id first). The :func:`pulser.Sequence.to_abstract_repr`
-        serialization is Pulser's own canonical, device-independent
-        representation, so an ``AnalogSpec`` and a round-tripped ``Sequence``
-        can be compared by that representation.
+        atom id first). Declared ``variables`` are ``declare_variable``-d, and
+        symbolic pulse values are evaluated by :func:`_parametrized_value`. The
+        :func:`pulser.Sequence.to_abstract_repr` serialization is Pulser's own
+        canonical, device-independent representation, so an ``AnalogSpec`` and
+        a round-tripped ``Sequence`` can be compared by that representation.
         """
         from pulser import Pulse, Sequence
         from pulser.devices import MockDevice
         from pulser.register import Register
         from pulser.waveforms import BlackmanWaveform, ConstantWaveform
 
+        _DTYPES = {"float": float, "int": int}
         register = Register.from_coordinates(self.register_coords, prefix="q")
         seq = Sequence(register, MockDevice)
         for channel, channel_type in self.channels.items():
             seq.declare_channel(channel, channel_type)
+        variables: Dict[str, Any] = {}
+        for name, dtype in self.variables:
+            if dtype not in _DTYPES:
+                raise ValueError(f"unsupported variable dtype {dtype!r}")
+            variables[name] = seq.declare_variable(name, 1, _DTYPES[dtype])
         for pulse_spec in self.pulses:
             if pulse_spec.target is not None:
                 seq.target(pulse_spec.target, pulse_spec.channel)
+            amplitude = _parametrized_value(pulse_spec.amplitude, variables)
+            detuning = _parametrized_value(pulse_spec.detuning, variables)
+            phase = _parametrized_value(pulse_spec.phase, variables)
             if pulse_spec.kind == "blackman":
-                amp = BlackmanWaveform(pulse_spec.duration, pulse_spec.amplitude)
+                if not isinstance(amplitude, (int, float)) or not isinstance(
+                    detuning, (int, float)
+                ):
+                    raise ValueError("blackman pulses cannot be parametrized")
+                amplitude = BlackmanWaveform(pulse_spec.duration, amplitude)
+                detuning = ConstantWaveform(pulse_spec.duration, detuning)
             else:
-                amp = ConstantWaveform(pulse_spec.duration, pulse_spec.amplitude)
-            seq.add(
-                Pulse(
-                    amp,
-                    ConstantWaveform(pulse_spec.duration, pulse_spec.detuning),
-                    pulse_spec.phase,
-                ),
-                pulse_spec.channel,
-            )
+                # ConstantWaveform accepts a symbolic value (a pulser
+                # parametrized expression) as well as a plain number.
+                amplitude = ConstantWaveform(pulse_spec.duration, amplitude)
+                detuning = ConstantWaveform(pulse_spec.duration, detuning)
+            seq.add(Pulse(amplitude, detuning, phase), pulse_spec.channel)
         if self.measure:
             seq.measure()
         return seq

@@ -269,6 +269,13 @@ class ResultSDK(ABC):
     static_source_losses: Tuple[str, ...] = ()     # losses inherent when departing from this SDK
     source_loss: Optional[Tuple[str, Optional[str]]] = None  # observed at the to_dict step
     probes: Tuple[Probe, ...] = ()
+    # Additional result *containers* of the same format (e.g. perceval
+    # BSSamples/BSCount/BSDistribution): each ``(label, build, check)``
+    # expands into one more edge of the adapter's format, sharing the same
+    # write steps and mandatory dict keys. ``build(reference)`` builds the
+    # container, ``check(result, expected)`` validates it (default ``build``/
+    # ``check`` remain the edge for the plain adapter).
+    containers: Tuple[Tuple[str, Callable, Callable], ...] = ()
 
     @abstractmethod
     def build(self, reference: ReferenceResult):  # pragma: no cover - interface
@@ -495,17 +502,26 @@ def build_edges(compression: Compression) -> Tuple[ConversionEdge, ...]:
     edges = []
     for input_sdk, targets in EDGES:
         steps = _producer_steps(input_sdk, compression)
-        for target in targets:
-            edge_id = f"{input_sdk.display} -> {input_sdk.fmt_label} -> {target.display}"
-            known = tuple(target.target_losses) + tuple(input_sdk.static_source_losses)
-            edges.append(
-                ConversionEdge(
-                    id=edge_id,
-                    input_fn=lambda ref, sdk=input_sdk: sdk.build(ref),
-                    steps=steps + (Step(type(target).read, {}, (target.check,)),),
-                    known_losses=known,
+        # Default edge + one edge per declared result container (same format,
+        # alternate input builder / read-side check).
+        rows = [(None, input_sdk.build, None)] + list(input_sdk.containers)
+        for label, build, check in rows:
+            suffix = "" if label is None else f":{label}"
+            for target in targets:
+                read_check = target.check if label is None else check
+                edge_id = (
+                    f"{input_sdk.display}{suffix} -> {input_sdk.fmt_label} "
+                    f"-> {target.display}{suffix}"
                 )
-            )
+                known = tuple(target.target_losses) + tuple(input_sdk.static_source_losses)
+                edges.append(
+                    ConversionEdge(
+                        id=edge_id,
+                        input_fn=lambda ref, b=build: b(ref),
+                        steps=steps + (Step(type(target).read, {}, (read_check,)),),
+                        known_losses=known,
+                    )
+                )
     return tuple(edges)
 
 
