@@ -169,6 +169,13 @@ def convert(circuit_str: str) -> PyKernel:
                     gate = get_gate(namel[1:], targs)
                     kernel.control(gate, qubit_refs[0], *qubit_refs[1:], *args)
                 else:
+                    if (namel := name.lower()) in ["rx", "ry", "rz", "u3"]:
+                        op = getattr(kernel, namel)
+                        args = [
+                            float(a) if isinstance(a, int) else a for a in args
+                        ]
+                        op(*args, *qubit_refs)
+                        continue
                     gate = get_gate(name, targs)
                     # Fix from qbraid: make sure we use float and not integer
                     args = list(
