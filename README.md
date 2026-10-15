@@ -95,8 +95,9 @@ flowchart LR
         CIRQ_IN["Cirq<br/>(cirq.Circuit)"]
         QISKIT_IN["Qiskit<br/>(qiskit.QuantumCircuit)"]
         CUDAQ_IN["CUDA Quantum<br/>(cudaq.Kernel)"]
+        MIMIQ_IN["MIMIQ<br/>(mimiqcircuits.Circuit)"]
         PULSER_IN["Pulser<br/>(pulser.Sequence)"]
-        PERCEVAL_IN["Perceval<br/>(perceval.Circuit)"]
+        PERCEVAL_IN["Perceval<br/>(perceval.Circuit / perceval.Experiment)"]
     end
 
     subgraph SER["Serialization format"]
@@ -117,16 +118,19 @@ flowchart LR
         CUDAQ_OUT["CUDA Quantum<br/>(cudaq.Kernel)"]
         MIMIQ_OUT["MIMIQ<br/>(mimiqcircuits.Circuit)"]
         PULSER_OUT["PULSER<br/>(pulser.Sequence)"]
-        PERCEVAL_OUT["Perceval<br/>(perceval.Circuit)"]
+        PERCEVAL_OUT["Perceval<br/>(perceval.Circuit / perceval.Experiment)"]
     end
 
     CIRQ_IN -->|cirq_to_cirqjson| CIRQJSON
     CIRQ_IN -->|cirq_to_qasm2| QASM2
     CIRQ_IN -->|cirq_to_qasm3| QASM3
+    CIRQ_IN -->|cirq_to_qir| QIR
     QISKIT_IN -->|qiskit_to_qasm2| QASM2
     QISKIT_IN -->|qiskit_to_qasm3| QASM3
+    QISKIT_IN -->|qiskit_to_qir| QIR
     CUDAQ_IN -->|cudaq_to_qasm2| QASM2
     CUDAQ_IN -->|cudaq_to_qir| QIR
+    MIMIQ_IN -->|mimiq_to_qasm2| QASM2
     PULSER_IN -->|pulser_to_pulserjson| PULSERJSON
     PERCEVAL_IN -->|perceval_to_percevaljson| PERCEVALJSON
 
@@ -137,6 +141,8 @@ flowchart LR
     QASM2 -->|qasm2_to_cirq| CIRQ_OUT
     QASM3 -->|qasm3_to_cirq| CIRQ_OUT
     QASM1 -->|qasm1_to_qiskit| QISKIT_OUT
+    QASM1 -->|qasm_to_percevalexp| PERCEVAL_OUT
+    QASM3 -->|qasm_to_percevalexp| PERCEVAL_OUT
     QASM2 -->|qasm2_to_qiskit| QISKIT_OUT
     QASM3 -->|qasm3_to_qiskit| QISKIT_OUT
     QASM2 -->|qasm2_to_cudaq - via qasm3_to_cudaq| CUDAQ_OUT
@@ -149,7 +155,7 @@ flowchart LR
     classDef fmt fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px,color:#062b07,font-weight:bold,rx:20px,ry:20px;
     classDef decl fill:#f3e5f5,stroke:#4a148c,stroke-width:2px,stroke-dasharray: 5 5,color:#2a0a4a,font-weight:bold,rx:20px,ry:20px;
 
-    class CIRQ_IN,QISKIT_IN,CUDAQ_IN,PULSER_IN,PERCEVAL_IN,CIRQ_OUT,QISKIT_OUT,CUDAQ_OUT,MIMIQ_OUT,PULSER_OUT,PERCEVAL_OUT sdk;
+    class CIRQ_IN,QISKIT_IN,CUDAQ_IN,PULSER_IN,MIMIQ_IN,PERCEVAL_IN,CIRQ_OUT,QISKIT_OUT,CUDAQ_OUT,MIMIQ_OUT,PULSER_OUT,PERCEVAL_OUT sdk;
     class QASM1,QASM2,QASM3,QIR,CIRQJSON,PULSERJSON,PERCEVALJSON fmt;
 ```
 
