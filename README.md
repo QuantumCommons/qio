@@ -62,16 +62,18 @@ qsim_simulator = QSimSimulator()
 
 qsim_result = qsim_simulator.run(circuit, repetitions=params.shots)
 
-program_result = QuantumProgramResult.from_cirq_result(result).to_json_str()
+program_result = QuantumProgramResult.from_cirq_result(qsim_result).to_json_str()
 
 # Send this to back to client side
 
 #####################
 # Back to client side
 
-cirq_result = qresult.to_cirq_result()
+client_result = QuantumProgramResult.from_json_str(program_result)
 
-qiskit_result = qresult.to_qiskit_result()
+cirq_result = client_result.to_cirq_result()
+
+qiskit_result = client_result.to_qiskit_result()
 ```
 
 ## qio circuit conversion mapping
@@ -83,8 +85,16 @@ represented here).
 - **Conversion flow**: an SDK node is translated into a serialization format
   (OpenQASM, QIR, Cirq JSON), then reloaded by another SDK.
 - The converters are located in `qio/utils/conversion/program/`.
-- `Perceval JSON` and `Pulser Sequence JSON` are declared in the
-  `QuantumProgramSerializationFormat` enum but **no converter is implemented**.
+- `Perceval JSON` and `Pulser Sequence JSON` are **closed self-round-trips**:
+  their converters only map the native SDK <-> the format (no other SDK reads
+  them).
+- **QIR is a production leaf**: `cirq` / `qiskit` / `cudaq` (and the
+  `qasm3_to_qir` converter) emit QIR LLVM IR *text*, but no QIR reader is
+  integrated yet (the `to_*` methods do not accept QIR).
+- **OpenQASM version normalization**: `qasm2_to_qasm3` / `qasm3_to_qasm2`
+  re-express a QASM program in the other version; `QuantumProgram` exposes it
+  through `to_qasm2_circuit()` (down-converts a QASM3 program) and
+  `to_qasm3_circuit()` (up-converts a QASM2 program).
 
 ```mermaid
 
@@ -149,6 +159,9 @@ flowchart LR
     QASM3 -->|qasm3_to_cudaq| CUDAQ_OUT
     QASM2 -->|qasm2_to_mimiq| MIMIQ_OUT
 
+    QASM2 -.->|qasm2_to_qasm3| QASM3
+    QASM3 -.->|qasm3_to_qasm2| QASM2
+
 
 
     classDef sdk fill:#e1f5fe,stroke:#01579b,stroke-width:2px,color:#00344f,font-weight:bold,rx:20px,ry:20px;
@@ -163,9 +176,10 @@ flowchart LR
 
 | Source SDK | Write method | Supported output formats |
 |---|---|---|
-| Cirq | `QuantumProgram.from_cirq_circuit` | Cirq JSON, OpenQASM 2, OpenQASM 3 |
-| Qiskit | `QuantumProgram.from_qiskit_circuit` | OpenQASM 2, OpenQASM 3 |
-| CUDA Quantum | `QuantumProgram.from_cudaq_kernel` | OpenQASM 2 (+ QIR via `cudaq_to_qir`) |
+| Cirq | `QuantumProgram.from_cirq_circuit` | Cirq JSON, OpenQASM 2, OpenQASM 3, QIR |
+| Qiskit | `QuantumProgram.from_qiskit_circuit` | OpenQASM 2, OpenQASM 3, QIR |
+| CUDA Quantum | `QuantumProgram.from_cudaq_kernel` | OpenQASM 2, QIR |
+| MIMIQ | `QuantumProgram.from_mimiq_circuit` | OpenQASM 2 |
 | Pulser | `QuantumProgram.from_pulser_sequence` | Pulser JSON |
 | Perceval | `QuantumProgram.from_perceval_circuit` | Perceval JSON |
 | Perceval | `QuantumProgram.from_perceval_experiment` | Perceval Experiment JSON |

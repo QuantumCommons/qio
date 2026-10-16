@@ -271,6 +271,9 @@ class QuantumProgram:
         from qio.utils.conversion.program.qiskit_to_qasm3 import (
             convert as qiskit_to_qasm3_convert,
         )
+        from qio.utils.conversion.program.qiskit_to_qir import (
+            convert as qiskit_to_qir_convert,
+        )
 
         dest_format = (
             QuantumProgramSerializationFormat.QASM_V3
@@ -289,6 +292,7 @@ class QuantumProgram:
             apply_serialization = {
                 QuantumProgramSerializationFormat.QASM_V2: qiskit_to_qasm2_convert,
                 QuantumProgramSerializationFormat.QASM_V3: qiskit_to_qasm3_convert,
+                QuantumProgramSerializationFormat.QIR_V1: qiskit_to_qir_convert,
             }
 
             serialization = apply_serialization[dest_format](qiskit_circuit)
@@ -356,6 +360,48 @@ class QuantumProgram:
                 "unsupported unserialization:", self.serialization_format, e
             )
 
+    @classmethod
+    def from_mimiq_circuit(
+        cls,
+        mimiq_circuit: "mimiqcircuits.Circuit",
+        dest_format: QuantumProgramSerializationFormat = QuantumProgramSerializationFormat.QASM_V2,
+        compression_format: QuantumProgramCompressionFormat = QuantumProgramCompressionFormat.ZLIB_BASE64_V1,
+    ) -> "QuantumProgram":
+        from qio.utils.conversion.program.mimiq_to_qasm2 import (
+            convert as mimiq_to_qasm2_convert,
+        )
+
+        dest_format = (
+            QuantumProgramSerializationFormat.QASM_V2
+            if dest_format
+            == QuantumProgramSerializationFormat.UNKNOWN_SERIALIZATION_FORMAT
+            else dest_format
+        )
+        compression_format = (
+            QuantumProgramCompressionFormat.NONE
+            if compression_format
+            == QuantumProgramCompressionFormat.UNKNOWN_COMPRESSION_FORMAT
+            else compression_format
+        )
+
+        try:
+            apply_serialization = {
+                QuantumProgramSerializationFormat.QASM_V2: mimiq_to_qasm2_convert,
+            }
+
+            serialization = apply_serialization[dest_format](mimiq_circuit)
+
+            if compression_format == QuantumProgramCompressionFormat.ZLIB_BASE64_V1:
+                serialization = str_to_zlib(serialization)
+
+            return cls(
+                serialization_format=dest_format,
+                compression_format=compression_format,
+                serialization=serialization,
+            )
+        except Exception as e:
+            raise Exception("unsupported serialization:", dest_format, e)
+
     def to_qasm2_circuit(self) -> str:
 
         serialization = self.serialization
@@ -363,7 +409,37 @@ class QuantumProgram:
         if self.compression_format == QuantumProgramCompressionFormat.ZLIB_BASE64_V1:
             serialization = zlib_to_str(serialization)
 
+        if self.serialization_format == QuantumProgramSerializationFormat.QASM_V3:
+            # Down-normalize QASM3 -> QASM2 with the self-hosted converter so a
+            # QASM3 program can be re-expressed as QASM2 (feeding the QASM2
+            # consumers).
+            from qio.utils.conversion.program.qasm3_to_qasm2 import (
+                convert as qasm3_to_qasm2_convert,
+            )
+
+            return qasm3_to_qasm2_convert(serialization)
+
         if self.serialization_format != QuantumProgramSerializationFormat.QASM_V2:
+            raise Exception("unsupported unserialization:", self.serialization_format)
+
+        return serialization
+
+    def to_qasm3_circuit(self) -> str:
+
+        serialization = self.serialization
+
+        if self.compression_format == QuantumProgramCompressionFormat.ZLIB_BASE64_V1:
+            serialization = zlib_to_str(serialization)
+
+        if self.serialization_format == QuantumProgramSerializationFormat.QASM_V2:
+            # Up-normalize QASM2 -> QASM3 with the self-hosted converter.
+            from qio.utils.conversion.program.qasm2_to_qasm3 import (
+                convert as qasm2_to_qasm3_convert,
+            )
+
+            return qasm2_to_qasm3_convert(serialization)
+
+        if self.serialization_format != QuantumProgramSerializationFormat.QASM_V3:
             raise Exception("unsupported unserialization:", self.serialization_format)
 
         return serialization
@@ -384,6 +460,9 @@ class QuantumProgram:
         from qio.utils.conversion.program.cirq_to_qasm3 import (
             convert as cirq_to_qasm3_convert,
         )
+        from qio.utils.conversion.program.cirq_to_qir import (
+            convert as cirq_to_qir_convert,
+        )
 
         dest_format = (
             QuantumProgramSerializationFormat.CIRQ_CIRCUIT_JSON_V1
@@ -403,6 +482,7 @@ class QuantumProgram:
                 QuantumProgramSerializationFormat.QASM_V2: cirq_to_qasm2_convert,
                 QuantumProgramSerializationFormat.QASM_V3: cirq_to_qasm3_convert,
                 QuantumProgramSerializationFormat.CIRQ_CIRCUIT_JSON_V1: cirq_to_cirqjson_convert,
+                QuantumProgramSerializationFormat.QIR_V1: cirq_to_qir_convert,
             }
 
             serialization = apply_serialization[dest_format](cirq_circuit)
@@ -465,6 +545,9 @@ class QuantumProgram:
         from qio.utils.conversion.program.cudaq_to_qasm2 import (
             convert as cudaq_to_qasm2_convert,
         )
+        from qio.utils.conversion.program.cudaq_to_qir import (
+            convert as cudaq_to_qir_convert,
+        )
 
         dest_format = (
             QuantumProgramSerializationFormat.QASM_V2
@@ -482,6 +565,7 @@ class QuantumProgram:
         try:
             apply_serialization = {
                 QuantumProgramSerializationFormat.QASM_V2: cudaq_to_qasm2_convert,
+                QuantumProgramSerializationFormat.QIR_V1: cudaq_to_qir_convert,
             }
 
             serialization = apply_serialization[dest_format](cudaq_kernel)

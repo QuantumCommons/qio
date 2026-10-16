@@ -23,7 +23,7 @@ applied to circuits.
 - **Input circuits are static and trusted** : each `ReferenceCircuit` wraps a
   single paradigm-specific `spec` (`GateSpec` / `AnalogSpec` / `PhotonicSpec`)
   described once, and is exposed in every SDK by the spec's builders
-  (`.cirq()`, `.qiskit()`, `.qasm2()`, `.qasm3()`, `.cudaq_kernel()`,
+  (`.cirq()`, `.qiskit()`, `.mimiq()`, `.qasm2()`, `.qasm3()`, `.cudaq_kernel()`,
   `.pulser()`, `.perceval()`). Circuits are not re-checked: only the
   *intermediate* and *final* objects are verified.
 - **Exact-first checks / declared losses** : every check compares the converted
@@ -55,7 +55,7 @@ applied to circuits.
 input_fn(circuit) ─► write (QuantumProgram.from_<sdk>_circuit,
                             dest_format + compression)
                         ├─ intermediate checks : check_program(fmt)
-                        └─ content check : check_qasm(2|3) / check_cirq_json
+                        └─ content check : check_qasm(2|3) / check_cirq_json / check_qir
                                            / check_pulser_json / check_perceval_json
                    ─► read (to_<sdk>_circuit + check_<sdk>)
                    ─► oracle (unitary / counts / structural / photonic)
@@ -99,7 +99,16 @@ input_fn(circuit) ─► write (QuantumProgram.from_<sdk>_circuit,
 Current ids are of the form `cirq->qasm2->cirq`, `qiskit->qasm3->cudaq`,
 `qiskit->qasm2->cudaq->qasm2->cirq`, etc.
 
-- QASM2/QASM3: `cirq`/`qiskit` → `qasm2`/`qasm3` → `cirq`/`qiskit`/`mimiq`/`cudaq`.
+- QASM2/QASM3: `cirq`/`qiskit`/`mimiq` → `qasm2`/`qasm3` → `cirq`/`qiskit`/`mimiq`/`cudaq`.
+  MIMIQ is an *input* (`mimiq -> qasm2 -> {qiskit, cirq}`) and a read-back
+  (`-> mimiq`) only via QASM2.
+- OpenQASM version normalization: `qiskit -> qasm{2,3} -> qasm{3,2} -> qiskit`
+  exercises the self-hosted `qasm2_to_qasm3` / `qasm3_to_qasm2` text converters
+  through the `to_qasm3_circuit` / `to_qasm2_circuit` accessors.
+- QIR production leaves: `{cirq,qiskit,cudaq} -> qir` (QIR_V1). QIR has no
+  read-back edge yet, so the `check_qir` content oracle validates the emitted
+  LLVM IR in place (`Module.from_ir` + `verify` + qubit count) and the edges
+  close on the `structural` oracle.
 - CirqJSON: `cirq`/`qiskit` → (only read back as cirq).
 - No-execution CUDA-Q loops:
   `{cirq,qiskit}->qasm{2,3}->cudaq->qasm2->{cirq,qiskit}`.
@@ -120,8 +129,9 @@ Current ids are of the form `cirq->qasm2->cirq`, `qiskit->qasm3->cudaq`,
 
 | Format | Content check | Read-back |
 |---|---|---|
-| `QASM_V2` | `check_qasm(2)` | `to_qasm2_circuit` |
-| `QASM_V3` | `check_qasm(3)` | — |
+| `QASM_V2` | `check_qasm(2)` | `to_qasm2_circuit` (also down-converts `QASM_V3`) |
+| `QASM_V3` | `check_qasm(3)` | `to_qasm3_circuit` (also up-converts `QASM_V2`) |
+| `QIR_V1` | `check_qir` | — (leaf: no QIR consumption edge yet) |
 | `CIRQ_CIRCUIT_JSON_V1` | `check_cirq_json` | `to_cirq_circuit` |
 | `PULSER_SEQUENCE_JSON_V1` | `check_pulser_json` | `to_pulser_sequence` |
 | `PERCEVAL_CIRCUIT_JSON_V1` | `check_perceval_json` | `to_perceval_circuit` |

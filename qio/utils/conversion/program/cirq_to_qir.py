@@ -11,6 +11,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+# Portions of this file are derived from qBraid/qbraid-qir
+# (https://github.com/qBraid/qbraid-qir), Copyright 2025 qBraid, licensed under
+# the Apache License, Version 2.0 (modified); see the repository NOTICE file
+# for the full attribution.
 from __future__ import annotations
 
 import hashlib
@@ -576,8 +580,8 @@ class CirqModule:
         visitor.finalize()
 
 
-def convert(circuit: cirq.Circuit, name: Optional[str] = None, **kwargs) -> Module:
-    """Convert a Cirq circuit to a PyQIR module.
+def convert(circuit: cirq.Circuit, name: Optional[str] = None, **kwargs) -> str:
+    """Convert a Cirq circuit to QIR LLVM IR text.
 
     Args:
         circuit: The Cirq circuit to convert.
@@ -589,7 +593,7 @@ def convert(circuit: cirq.Circuit, name: Optional[str] = None, **kwargs) -> Modu
         record_output (bool): Whether to record output calls for registers, default `True`.
 
     Returns:
-        The QIR ``pyqir.Module`` representation of the input Cirq circuit.
+        The QIR LLVM IR text (``str``) representation of the input Cirq circuit.
 
     Raises:
         TypeError: If the input is not a valid Cirq circuit.
@@ -619,4 +623,4 @@ def convert(circuit: cirq.Circuit, name: Optional[str] = None, **kwargs) -> Modu
     error = llvm_module.verify()
     if error is not None:
         raise CirqConversionError(error)
-    return llvm_module
+    return str(llvm_module)

@@ -11,6 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+# Portions of this file are derived from qBraid/qbraid-qir
+# (https://github.com/qBraid/qbraid-qir), Copyright 2026 qBraid, licensed under
+# the Apache License, Version 2.0 (modified). The derived code further
+# originates from microsoft/qiskit-qir (MIT, Copyright (c) Microsoft
+# Corporation) as documented in qBraid's qiskit/NOTICE.md; see the repository
+# NOTICE file for the full attribution.
 from __future__ import annotations
 
 import logging
@@ -419,8 +425,8 @@ def convert(
     name: Optional[str] = None,
     transpile: bool = False,
     **kwargs,
-) -> Module:
-    """Convert a Qiskit QuantumCircuit to a PyQIR module.
+) -> str:
+    """Convert a Qiskit QuantumCircuit to QIR LLVM IR text.
 
     Args:
         circuit: The Qiskit QuantumCircuit to convert.
@@ -436,7 +442,7 @@ def convert(
         emit_barrier_calls (bool): Whether to emit barrier calls in the QIR, default `False`.
 
     Returns:
-        The QIR ``pyqir.Module`` representation of the input Qiskit circuit.
+        The QIR LLVM IR text (``str``) representation of the input Qiskit circuit.
 
     Raises:
         TypeError: If the input is not a valid Qiskit QuantumCircuit.
@@ -465,4 +471,4 @@ def convert(
     if error is not None:
         raise QiskitConversionError(error)
 
-    return llvm_module
+    return str(llvm_module)

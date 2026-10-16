@@ -11,6 +11,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+# Portions of this file are derived from qBraid/qbraid-qir
+# (https://github.com/qBraid/qbraid-qir), Copyright 2025 qBraid, licensed under
+# the Apache License, Version 2.0 (modified); see the repository NOTICE file
+# for the full attribution.
 from __future__ import annotations
 
 import logging
@@ -883,8 +887,8 @@ def convert(
     external_gates: Optional[list[str]] = None,
     profile: str = PROFILE_BASE,
     **kwargs,
-) -> Module:
-    """Convert an OpenQASM 3 program to a PyQIR module.
+) -> str:
+    """Convert an OpenQASM 3 program to QIR LLVM IR text.
 
     Args:
         program: The OpenQASM 3 program to convert (as an AST or a string).
@@ -900,7 +904,7 @@ def convert(
         emit_barrier_calls (bool): Whether to emit barrier calls, defaults to `True`.
 
     Returns:
-        The QIR ``pyqir.Module`` representation of the input OpenQASM 3 program.
+        The QIR LLVM IR text (``str``) representation of the input OpenQASM 3 program.
 
     Raises:
         TypeError: If the input is not a valid OpenQASM 3 program.
@@ -934,4 +938,4 @@ def convert(
     err = llvm_module.verify()
     if err is not None:
         raise Qasm3ConversionError(err)
-    return llvm_module
+    return str(llvm_module)

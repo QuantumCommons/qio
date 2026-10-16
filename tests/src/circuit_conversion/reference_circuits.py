@@ -419,6 +419,12 @@ class GateSpec:
                 getattr(kernel, gate)(*targets)
         return kernel
 
+    def mimiq(self):
+        import mimiqcircuits
+        from mimiqcircuits.qasm import loads
+
+        return loads(self.qasm2())
+
 
 @dataclass
 class AnalogSpec:
@@ -718,6 +724,9 @@ class ReferenceCircuit:
 
     def cudaq_kernel(self):
         return self.spec.cudaq_kernel()
+
+    def mimiq(self):
+        return self.spec.mimiq()
 
     def pulser(self) -> "pulser.Sequence":
         return self.spec.pulser()

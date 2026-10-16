@@ -450,6 +450,53 @@ def check_mimiq(result, expected: Optional[ReferenceCircuit] = None) -> None:
         check_operation_sequence(_mimiq_operations(result), expected.gates)
 
 
+def check_qir(result, expected: Optional[ReferenceCircuit] = None) -> None:
+    """Validates the serialized ``QIR_V1`` content: it must parse as a valid
+    PyQIR module (``verify`` passes) and declare the reference qubit count.
+
+    QIR is a leaf format in the battery (no consumption edges), so this is the
+    only place its content is checked; the producers' output therefore only
+    needs to be *well-formed* QIR (the ``unitary`` oracle cannot close a QIR
+    leg without a QIR interpreter)."""
+    from pyqir import Context, Module
+
+    source = _resolve_serialization(result)
+    assert isinstance(source, str), f"expected QIR LLVM IR text, got {type(source)}"
+    assert source.strip(), "empty QIR LLVM IR string"
+    module = Module.from_ir(Context(), source, "module")
+    error = module.verify()
+    assert error is None, f"QIR module does not verify: {error}"
+    if expected is None:
+        return
+    num_qubits = _qir_num_qubits(source)
+    if num_qubits is not None:
+        assert num_qubits == expected.n_qubits, (num_qubits, expected.n_qubits)
+
+
+def _qir_num_qubits(source: str) -> Optional[int]:
+    """Best-effort qubit count of a QIR module.
+
+    The qBraid-derived producers write qubit ``0`` as ``ptr null`` and qubit
+    ``i > 0`` as ``ptr inttoptr (i64 i to ptr)``; CUDA-Q allocates a QIR array
+    (``@__quantum__rt__qubit_allocate_array``). Returns ``None`` when the
+    qubit cardinality cannot be derived.
+    """
+    import re
+
+    m = re.search(
+        r"@__quantum__rt__qubit_allocate_array\((?:i32|i64)\s*(\d+)", source
+    )
+    if m:
+        return int(m.group(1))
+    indices = {int(x) for x in re.findall(r"inttoptr \(i64 (\d+) to ptr\)", source)}
+    if indices:
+        return max(indices) + 1
+    if "@__quantum__qis__" in source:
+        # A circuit whose only qubit is 0 never emits an inttoptr reference.
+        return 1
+    return None
+
+
 def check_qasm(version: int) -> Callable:
     """Validates the serialized OpenQASM ``version`` (2 or 3) content: it must
     parse, declare the right qubit count and reproduce the reference operation
@@ -719,6 +766,8 @@ class GateParadigm(Paradigm):
     input_fns = {
         "cirq": lambda c: c.cirq(),
         "qiskit": lambda c: c.qiskit(),
+        "mimiq": lambda c: c.mimiq(),
+        "cudaq": lambda c: c.cudaq_kernel(),
     }
 
     def content_checks(self, fmt: Serialization) -> Tuple[Callable, ...]:
@@ -728,6 +777,8 @@ class GateParadigm(Paradigm):
             return (check_qasm(3),)
         if fmt in (Serialization.CIRQ_CIRCUIT_JSON_V1,):
             return (check_cirq_json,)
+        if fmt in (Serialization.QIR_V1,):
+            return (check_qir,)
         return ()
 
     def build_edges(self, compression: Compression):  # noqa: C901 - declarative graph
@@ -1012,6 +1063,98 @@ class GateParadigm(Paradigm):
             ),
         )
 
+        producer = QuantumProgram.from_mimiq_circuit
+        add(
+            "mimiq->qasm2->qiskit",
+            "mimiq",
+            producer,
+            Serialization.QASM_V2,
+            QuantumProgram.to_qiskit_circuit,
+            check_qiskit,
+            known_losses=_info_and(),
+        )
+        add(
+            "mimiq->qasm2->cirq",
+            "mimiq",
+            producer,
+            Serialization.QASM_V2,
+            QuantumProgram.to_cirq_circuit,
+            check_cirq,
+            known_losses=_info_and(),
+        )
+
+        add(
+            "cirq->qir",
+            "cirq",
+            QuantumProgram.from_cirq_circuit,
+            Serialization.QIR_V1,
+            oracle="structural",
+        )
+        add(
+            "qiskit->qir",
+            "qiskit",
+            QuantumProgram.from_qiskit_circuit,
+            Serialization.QIR_V1,
+            oracle="structural",
+        )
+        add(
+            "cudaq->qir",
+            "cudaq",
+            QuantumProgram.from_cudaq_kernel,
+            Serialization.QIR_V1,
+            oracle="structural",
+        )
+
+        from qio.utils.conversion.program.qasm2_to_qiskit import (
+            convert as qasm2_to_qiskit_convert,
+        )
+        from qio.utils.conversion.program.qasm3_to_qiskit import (
+            convert as qasm3_to_qiskit_convert,
+        )
+
+        qasm2_write_checks = (check_program(Serialization.QASM_V2),) + self.content_checks(
+            Serialization.QASM_V2
+        )
+        qasm3_write_checks = (check_program(Serialization.QASM_V3),) + self.content_checks(
+            Serialization.QASM_V3
+        )
+        register(
+            "qiskit->qasm3->qasm2->qiskit",
+            "qiskit",
+            (
+                self.Step(
+                    QuantumProgram.from_qiskit_circuit,
+                    {
+                        "dest_format": Serialization.QASM_V3,
+                        "compression_format": compression,
+                    },
+                    qasm3_write_checks,
+                ),
+                self.Step(QuantumProgram.to_qasm2_circuit, {}, (check_qasm(2),)),
+                self.Step(qasm2_to_qiskit_convert, {}, (check_qiskit,)),
+            ),
+            oracle="unitary",
+            known_losses=_info_and(),
+        )
+        register(
+            "qiskit->qasm2->qasm3->qiskit",
+            "qiskit",
+            (
+                self.Step(
+                    QuantumProgram.from_qiskit_circuit,
+                    {
+                        "dest_format": Serialization.QASM_V2,
+                        "compression_format": compression,
+                    },
+                    qasm2_write_checks,
+                ),
+                self.Step(QuantumProgram.to_qasm3_circuit, {}, (check_qasm(3),)),
+                self.Step(qasm3_to_qiskit_convert, {}, (check_qiskit,)),
+            ),
+            oracle="unitary",
+            known_losses=_info_and(),
+        )
+
         return tuple(edges)
 
     unsupported_conversions = (
@@ -1046,8 +1189,12 @@ class GateParadigm(Paradigm):
             ),
         ),
         (
-            "to_qasm2_circuit on QASM_V3",
-            lambda: _cirq_program(Serialization.QASM_V3).to_qasm2_circuit(),
+            "to_qasm2_circuit on CIRQJSON",
+            lambda: _cirq_program(Serialization.CIRQ_CIRCUIT_JSON_V1).to_qasm2_circuit(),
+        ),
+        (
+            "to_qasm3_circuit on CIRQJSON",
+            lambda: _cirq_program(Serialization.CIRQ_CIRCUIT_JSON_V1).to_qasm3_circuit(),
         ),
         (
             "to_mimiq_circuit on QASM_V3",
