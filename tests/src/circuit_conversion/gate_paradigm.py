@@ -1105,12 +1105,15 @@ class GateParadigm(Paradigm):
             oracle="structural",
         )
 
-        from qio.utils.conversion.program.qasm2_to_qiskit import (
-            convert as qasm2_to_qiskit_convert,
-        )
-        from qio.utils.conversion.program.qasm3_to_qiskit import (
-            convert as qasm3_to_qiskit_convert,
-        )
+        def _qasm2_to_qiskit(circuit_str):
+            from qio.utils.conversion.program.qasm2_to_qiskit import convert
+
+            return convert(circuit_str)
+
+        def _qasm3_to_qiskit(circuit_str):
+            from qio.utils.conversion.program.qasm3_to_qiskit import convert
+
+            return convert(circuit_str)
 
         qasm2_write_checks = (check_program(Serialization.QASM_V2),) + self.content_checks(
             Serialization.QASM_V2
@@ -1131,7 +1134,7 @@ class GateParadigm(Paradigm):
                     qasm3_write_checks,
                 ),
                 self.Step(QuantumProgram.to_qasm2_circuit, {}, (check_qasm(2),)),
-                self.Step(qasm2_to_qiskit_convert, {}, (check_qiskit,)),
+                self.Step(_qasm2_to_qiskit, {}, (check_qiskit,)),
             ),
             oracle="unitary",
             known_losses=_info_and(),
@@ -1149,7 +1152,7 @@ class GateParadigm(Paradigm):
                     qasm2_write_checks,
                 ),
                 self.Step(QuantumProgram.to_qasm3_circuit, {}, (check_qasm(3),)),
-                self.Step(qasm3_to_qiskit_convert, {}, (check_qiskit,)),
+                self.Step(_qasm3_to_qiskit, {}, (check_qiskit,)),
             ),
             oracle="unitary",
             known_losses=_info_and(),
