@@ -56,7 +56,7 @@ class QuantumNoiseModel:
         return cls.from_json_dict(data)
 
     def to_json_str(self) -> str:
-        return json.dumps(self.to_json_dict())
+        return json.dumps(self.to_json_dict(), sort_keys=True, default=str)
 
     @classmethod
     def from_qiskit_aer_noise_model(
