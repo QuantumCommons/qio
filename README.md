@@ -167,8 +167,6 @@ flowchart LR
     QASM2 -->|qasm2_to_cirq| CIRQ_OUT
     QASM3 -->|qasm3_to_cirq| CIRQ_OUT
     QASM1 -->|qasm1_to_qiskit| QISKIT_OUT
-    QASM1 -->|qasm_to_percevalexp| PERCEVAL_OUT
-    QASM3 -->|qasm_to_percevalexp| PERCEVAL_OUT
     QASM2 -->|qasm2_to_qiskit| QISKIT_OUT
     QASM3 -->|qasm3_to_qiskit| QISKIT_OUT
     QASM2 -->|qasm2_to_cudaq - via qasm3_to_cudaq| CUDAQ_OUT
