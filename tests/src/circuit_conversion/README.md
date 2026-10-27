@@ -105,10 +105,16 @@ Current ids are of the form `cirq->qasm2->cirq`, `qiskit->qasm3->cudaq`,
 - OpenQASM version normalization: `qiskit -> qasm{2,3} -> qasm{3,2} -> qiskit`
   exercises the self-hosted `qasm2_to_qasm3` / `qasm3_to_qasm2` text converters
   through the `to_qasm3_circuit` / `to_qasm2_circuit` accessors.
-- QIR production leaves: `{cirq,qiskit,cudaq} -> qir` (QIR_V1). QIR has no
-  read-back edge yet, so the `check_qir` content oracle validates the emitted
-  LLVM IR in place (`Module.from_ir` + `verify` + qubit count) and the edges
-  close on the `structural` oracle.
+- QIR production: `{cirq,qiskit,cudaq} -> qir` (QIR_V1). QIR is read back into
+  CUDA-Q: `qir_to_cudaq` (wired as the `QIR_V1` reader of
+  `to_cudaq_kernel`) reconstructs the kernel from the emitted LLVM IR, and the
+  `{cirq,qiskit,cudaq}->qir->cudaq` edges close on the "counts" oracle
+  (executing the rebuilt kernel). The read-back covers the straight-line subset
+  of both the thin profile (constant-pointer operands, from
+  `cirq`/`qiskit`/`qasm3`) and the CUDA-Q profile (`qubit_allocate_array` + SSA
+  loads + `generalizedInvoke` controlled gates, from `cudaq_to_qir`); on the
+  way in, the `check_qir` content oracle validates the emitted LLVM IR in place
+  (`Module.from_ir` + `verify` + qubit count).
 - CirqJSON: `cirq`/`qiskit` → (only read back as cirq).
 - No-execution CUDA-Q loops:
   `{cirq,qiskit}->qasm{2,3}->cudaq->qasm2->{cirq,qiskit}`.
@@ -131,7 +137,7 @@ Current ids are of the form `cirq->qasm2->cirq`, `qiskit->qasm3->cudaq`,
 |---|---|---|
 | `QASM_V2` | `check_qasm(2)` | `to_qasm2_circuit` (also down-converts `QASM_V3`) |
 | `QASM_V3` | `check_qasm(3)` | `to_qasm3_circuit` (also up-converts `QASM_V2`) |
-| `QIR_V1` | `check_qir` | — (leaf: no QIR consumption edge yet) |
+| `QIR_V1` | `check_qir` | `to_cudaq_kernel` (thin & CUDA-Q straight-line profile) |
 | `CIRQ_CIRCUIT_JSON_V1` | `check_cirq_json` | `to_cirq_circuit` |
 | `PULSER_SEQUENCE_JSON_V1` | `check_pulser_json` | `to_pulser_sequence` |
 | `PERCEVAL_CIRCUIT_JSON_V1` | `check_perceval_json` | `to_perceval_circuit` |

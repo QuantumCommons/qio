@@ -19,6 +19,10 @@
   so a producer that returns a module (or invalid text) fails.
 - ``QuantumProgram.from_*_circuit(..., QIR_V1)`` serializes the produced QIR
   text (``QIR_V1`` production wiring).
+- ``QuantumProgram.to_cudaq_kernel()`` reads QIR back into a CUDA-Q kernel: the
+  thin profile (constant-pointer operands, from ``cirq``/``qiskit``) and the
+  CUDA-Q profile (``qubit_allocate_array`` + SSA loads + ``generalizedInvoke``
+  controlled gates, from ``cudaq_to_qir``) are both reconstructed and executed.
 - The self-hosted QASM2 <-> QASM3 text converters (``qasm2_to_qasm3`` /
   ``qasm3_to_qasm2``) and their ``QuantumProgram`` accessors
   (``to_qasm2_circuit`` / ``to_qasm3_circuit`` normalization) are validated
@@ -119,6 +123,48 @@ def test_from_qiskit_circuit_qir_v1_compressed():
         program.serialization_format == QuantumProgramSerializationFormat.QIR_V1
     )
     _assert_valid_qir(zlib_to_str(program.serialization), 2)
+
+
+# --- QIR_V1 read-back through to_cudaq_kernel ---------------------------
+
+
+def _sample_kernel_counts(kernel) -> set:
+    import cudaq
+
+    return set(dict(cudaq.sample(kernel, shots_count=300).items()).keys())
+
+
+def test_to_cudaq_kernel_reads_qir_v1_thin_profile():
+    # ``cirq_to_qir`` emits the *thin* profile (constant-pointer operands); the
+    # ``QIR_V1`` reader reconstructs and executes the kernel.
+    program = QuantumProgram.from_cirq_circuit(
+        _cirq_bell(),
+        dest_format=QuantumProgramSerializationFormat.QIR_V1,
+        compression_format=QuantumProgramCompressionFormat.NONE,
+    )
+    assert _sample_kernel_counts(program.to_cudaq_kernel()) == {"00", "11"}
+
+
+def test_to_cudaq_kernel_reads_qir_v1_cudaq_profile():
+    # ``cudaq_to_qir`` emits the CUDA-Q profile (qubit_allocate_array + SSA
+    # loads + controlled gates via ``generalizedInvoke``); the ``QIR_V1`` reader
+    # decodes it back into an equivalent kernel.
+    import cudaq
+
+    @cudaq.kernel
+    def _bell_kernel():
+        qubits = cudaq.qvector(2)
+        h(qubits[0])
+        x.ctrl(qubits[0], qubits[1])
+        mz(qubits[0])
+        mz(qubits[1])
+
+    program = QuantumProgram.from_cudaq_kernel(
+        _bell_kernel,
+        dest_format=QuantumProgramSerializationFormat.QIR_V1,
+        compression_format=QuantumProgramCompressionFormat.NONE,
+    )
+    assert _sample_kernel_counts(program.to_cudaq_kernel()) == {"00", "11"}
 
 
 # --- QASM2 <-> QASM3 normalization ---------------------------------------

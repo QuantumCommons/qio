@@ -1104,6 +1104,33 @@ class GateParadigm(Paradigm):
             Serialization.QIR_V1,
             oracle="structural",
         )
+        add(
+            "cirq->qir->cudaq",
+            "cirq",
+            QuantumProgram.from_cirq_circuit,
+            Serialization.QIR_V1,
+            QuantumProgram.to_cudaq_kernel,
+            check_cudaq,
+            oracle="counts",
+        )
+        add(
+            "qiskit->qir->cudaq",
+            "qiskit",
+            QuantumProgram.from_qiskit_circuit,
+            Serialization.QIR_V1,
+            QuantumProgram.to_cudaq_kernel,
+            check_cudaq,
+            oracle="counts",
+        )
+        add(
+            "cudaq->qir->cudaq",
+            "cudaq",
+            QuantumProgram.from_cudaq_kernel,
+            Serialization.QIR_V1,
+            QuantumProgram.to_cudaq_kernel,
+            check_cudaq,
+            oracle="counts",
+        )
 
         def _qasm2_to_qiskit(circuit_str):
             from qio.utils.conversion.program.qasm2_to_qiskit import convert

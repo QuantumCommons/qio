@@ -588,6 +588,9 @@ class QuantumProgram:
         from qio.utils.conversion.program.qasm3_to_cudaq import (
             convert as qasm3_to_cudaq_convert,
         )
+        from qio.utils.conversion.program.qir_to_cudaq import (
+            convert as qir_to_cudaq_convert,
+        )
 
         serialization = self.serialization
 
@@ -601,6 +604,7 @@ class QuantumProgram:
             apply_unserialization = {
                 QuantumProgramSerializationFormat.QASM_V2: qasm2_to_cudaq_convert,
                 QuantumProgramSerializationFormat.QASM_V3: qasm3_to_cudaq_convert,
+                QuantumProgramSerializationFormat.QIR_V1: qir_to_cudaq_convert,
             }
 
             return apply_unserialization[self.serialization_format](serialization)

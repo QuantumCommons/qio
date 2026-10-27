@@ -88,9 +88,14 @@ represented here).
 - `Perceval JSON` and `Pulser Sequence JSON` are **closed self-round-trips**:
   their converters only map the native SDK <-> the format (no other SDK reads
   them).
-- **QIR is a production leaf**: `cirq` / `qiskit` / `cudaq` (and the
-  `qasm3_to_qir` converter) emit QIR LLVM IR *text*, but no QIR reader is
-  integrated yet (the `to_*` methods do not accept QIR).
+- **QIR**: `cirq` / `qiskit` / `cudaq` (and the `qasm3_to_qir` converter) emit QIR
+  LLVM IR *text*; `qir_to_cudaq` reads it back into a CUDA-Q kernel (the `QIR_V1`
+  reader, exposed through `QuantumProgram.to_cudaq_kernel()`). The reader covers
+  the *straight-line* subset of both the thin profile (`cirq`/`qiskit`/`qasm3`
+  producers' constant-pointer operands) and the CUDA-Q profile
+  (`qubit_allocate_array` + SSA loads + `generalizedInvoke` controlled gates);
+  richer QIR (computed SSA angles, multi-control gates, mid-circuit control
+  flow) raises `QirToCudaqError`.
 - **OpenQASM version normalization**: `qasm2_to_qasm3` / `qasm3_to_qasm2`
   re-express a QASM program in the other version; `QuantumProgram` exposes it
   through `to_qasm2_circuit()` (down-converts a QASM3 program) and
@@ -157,6 +162,7 @@ flowchart LR
     QASM3 -->|qasm3_to_qiskit| QISKIT_OUT
     QASM2 -->|qasm2_to_cudaq - via qasm3_to_cudaq| CUDAQ_OUT
     QASM3 -->|qasm3_to_cudaq| CUDAQ_OUT
+    QIR -->|qir_to_cudaq| CUDAQ_OUT
     QASM2 -->|qasm2_to_mimiq| MIMIQ_OUT
 
     QASM2 -.->|qasm2_to_qasm3| QASM3
@@ -188,7 +194,7 @@ flowchart LR
 |---|---|---|
 | Cirq | `QuantumProgram.to_cirq_circuit` | OpenQASM 1/2/3, Cirq JSON |
 | Qiskit | `QuantumProgram.to_qiskit_circuit` | OpenQASM 1/2/3 |
-| CUDA Quantum | `QuantumProgram.to_cudaq_kernel` | OpenQASM 2/3 |
+| CUDA Quantum | `QuantumProgram.to_cudaq_kernel` | OpenQASM 2/3, QIR |
 | MIMIQ | `QuantumProgram.to_mimiq_circuit` | OpenQASM 2 |
 | Pulser | `QuantumProgram.to_pulser_sequence` | Pulser JSON |
 | Perceval | `QuantumProgram.to_perceval_circuit` | Perceval JSON |
