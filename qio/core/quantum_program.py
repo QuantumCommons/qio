@@ -430,6 +430,7 @@ class QuantumProgram:
                 serialization = zlib_to_str(serialization)
 
             apply_serialization = {
+                QuantumProgramSerializationFormat.QASM_V2: (lambda s: s),
                 QuantumProgramSerializationFormat.QASM_V3: qasm3_to_qasm2_convert,
             }
 
@@ -456,6 +457,7 @@ class QuantumProgram:
 
             apply_serialization = {
                 QuantumProgramSerializationFormat.QASM_V2: qasm2_to_qasm3_convert,
+                QuantumProgramSerializationFormat.QASM_V3: (lambda s: s),
             }
 
             return apply_serialization[self.serialization_format](serialization)
