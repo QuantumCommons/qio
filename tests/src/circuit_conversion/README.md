@@ -101,10 +101,28 @@ Current ids are of the form `cirq->qasm2->cirq`, `qiskit->qasm3->cudaq`,
 
 - QASM2/QASM3: `cirq`/`qiskit`/`mimiq` → `qasm2`/`qasm3` → `cirq`/`qiskit`/`mimiq`/`cudaq`.
   MIMIQ is an *input* (`mimiq -> qasm2 -> {qiskit, cirq}`) and a read-back
-  (`-> mimiq`) only via QASM2.
+  (`-> mimiq`) via QASM2 **and** QASM3 text: `qasm3_to_mimiq` down-normalizes
+  the QASM3 to QASM2 for `mimiqcircuits` (`cirq -> qasm3 -> mimiq`,
+  `qiskit -> qasm3 -> mimiq`).
 - OpenQASM version normalization: `qiskit -> qasm{2,3} -> qasm{3,2} -> qiskit`
   exercises the self-hosted `qasm2_to_qasm3` / `qasm3_to_qasm2` text converters
-  through the `to_qasm3_circuit` / `to_qasm2_circuit` accessors.
+  through the `to_qasm3_circuit` / `to_qasm2_circuit` accessors. The same pair
+  backs two SDK legs: CUDA-Q writing QASM 3 (`cudaq -> qasm3 -> cudaq`,
+  `cudaq_to_qasm3` = cudaq's QASM2 output up-normalized through
+  `qasm2_to_qasm3`) and MIMIQ reading QASM 3 text (see above).
+- **Straight-line QASM normalization limits**: the self-hosted
+  `qasm2_to_qasm3` / `qasm3_to_qasm2` pair only covers *straight-line*
+  programs and never decomposes gates beyond the `u1`/`cu1` ↔ `p`/`cp` rename:
+  classical control flow (`if`/`for`/`while`/`switch` blocks) is not handled,
+  `gphase` is silently dropped on the QASM3→QASM2 leg (a `// dropped` comment is
+  left in its place), and other stdlib gates (`u2`/`u3`/`cu`/`cu2`/`cu3`) are
+  not mapped. Every edge that crosses the pair declares these limits as
+  `QASM_NORMALIZATION_LIMIT_LOSSES` (`qasm_control_flow`, `qasm_gphase`,
+  `qasm_stdlib_gate`); the reference circuits are all straight-line, so the
+  categories are exercised by `test_qasm_normalization_limitations`, which
+  pushes QASM3 sources using `if` control flow, `gphase` and `u3` through the
+  `check_qasm_normalization_limitations` probe inside a real
+  `cirq->qasm3->mimiq` edge and records all three in the session loss report.
 - QIR production: `{cirq,qiskit,cudaq} -> qir` (QIR_V1). QIR is read back into
   CUDA-Q: `qir_to_cudaq` (wired as the `QIR_V1` reader of
   `to_cudaq_kernel`) reconstructs the kernel from the emitted LLVM IR, and the
@@ -126,7 +144,7 @@ Current ids are of the form `cirq->qasm2->cirq`, `qiskit->qasm3->cudaq`,
   `perceval_experiment->percevaljson->perceval_experiment` (the same archive,
   `PERCEVAL_EXPERIMENT_JSON_V1`).
 - *Unsupported* cases (e.g. `from_cudaq_kernel -> CIRQJSON`,
-  `to_mimiq_circuit on QASM_V3`, `to_cirq_circuit on PERCEVALJSON`) live in
+  `to_mimiq_circuit on CIRQJSON`, `to_cirq_circuit on PERCEVALJSON`) live in
   each paradigm's `unsupported_conversions` (aggregated into
   `UNSUPPORTED_CONVERSIONS`): every `(id, callable)` entry must raise an
   `Exception`.
@@ -136,7 +154,7 @@ Current ids are of the form `cirq->qasm2->cirq`, `qiskit->qasm3->cudaq`,
 | Format | Content check | Read-back |
 |---|---|---|
 | `QASM_V2` | `check_qasm(2)` | `to_qasm2_circuit` (also down-converts `QASM_V3`) |
-| `QASM_V3` | `check_qasm(3)` | `to_qasm3_circuit` (also up-converts `QASM_V2`) |
+| `QASM_V3` | `check_qasm(3)` | `to_qasm3_circuit` (also up-converts `QASM_V2`); read by `to_mimiq_circuit` (`qasm3_to_mimiq`) and `to_cudaq_kernel` (`qasm3_to_cudaq`) |
 | `QIR_V1` | `check_qir` | `to_cudaq_kernel` (thin & CUDA-Q straight-line profile) |
 | `CIRQ_CIRCUIT_JSON_V1` | `check_cirq_json` | `to_cirq_circuit` |
 | `PULSER_SEQUENCE_JSON_V1` | `check_pulser_json` | `to_pulser_sequence` |

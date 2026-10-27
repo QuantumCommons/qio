@@ -71,3 +71,59 @@ def test_unsupported_conversion(case):
     _, operation = case
     with pytest.raises(Exception):
         operation()
+
+
+def test_qasm_normalization_limitations():
+    from circuit_testing import (
+        NONE,
+        LOSS_QASM_CONTROL_FLOW,
+        LOSS_QASM_GATE_SET,
+        LOSS_QASM_GPHASE,
+        build_edges,
+        loss_report,
+        set_loss_context,
+    )
+    from gate_paradigm import check_qasm_normalization_limitations
+    from qio.core import (
+        QuantumProgram,
+        QuantumProgramCompressionFormat,
+        QuantumProgramSerializationFormat,
+    )
+    from reference_circuits import GateSpec, ReferenceCircuit
+
+    edges = {e.id: e for e in build_edges(NONE)}
+    probe = ReferenceCircuit(  # label used in the loss report, not registered
+        GateSpec(
+            name="qasm_normalization_limits_probe",
+            n_qubits=1,
+            gates=[("measure", (), (0,))],
+        )
+    )
+    source = (
+        "OPENQASM 3.0;\n"
+        'include "stdgates.inc";\n'
+        "qubit[1] q;\n"
+        "bit[1] c;\n"
+        "gphase(0.5);\n"
+        "u3(0.1, 0.2, 0.3) q[0];\n"
+        "h q[0];\n"
+        "if (c[0]) x q[0];\n"
+        "c[0] = measure q[0];\n"
+    )
+    program = QuantumProgram(
+        serialization_format=QuantumProgramSerializationFormat.QASM_V3,
+        compression_format=QuantumProgramCompressionFormat.NONE,
+        serialization=source,
+    )
+
+    set_loss_context(edges["cirq->qasm3->mimiq"], probe)
+    check_qasm_normalization_limitations(program, probe)
+
+    entry = loss_report()["cirq->qasm3->mimiq"]
+    for category in (
+        LOSS_QASM_CONTROL_FLOW,
+        LOSS_QASM_GPHASE,
+        LOSS_QASM_GATE_SET,
+    ):
+        assert category in entry, category
+        assert "qasm_normalization_limits_probe" in entry[category]["circuits"]

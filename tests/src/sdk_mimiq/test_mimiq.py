@@ -223,6 +223,28 @@ def test_from_mimiq_circuit():
     assert round_tripped.num_qubits() == 2
 
 
+def test_to_mimiq_circuit_reads_qasm3():
+    qasm3_str = """OPENQASM 3.0;
+    include "stdgates.inc";
+    qubit[2] q;
+    bit[2] c;
+    h q[0];
+    cx q[0], q[1];
+    c[0] = measure q[0];
+    c[1] = measure q[1];
+    """
+
+    program = QuantumProgram(
+        serialization_format=QuantumProgramSerializationFormat.QASM_V3,
+        compression_format=QuantumProgramCompressionFormat.NONE,
+        serialization=qasm3_str,
+    )
+
+    mimiq_circuit = program.to_mimiq_circuit()
+    assert mimiq_circuit is not None
+    assert mimiq_circuit.num_qubits() == 2
+
+
 def test_mimiq_result_conversion_integrity():
     circuit = """OPENQASM 2.0;
     include "qelib1.inc";

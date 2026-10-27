@@ -99,7 +99,17 @@ represented here).
 - **OpenQASM version normalization**: `qasm2_to_qasm3` / `qasm3_to_qasm2`
   re-express a QASM program in the other version; `QuantumProgram` exposes it
   through `to_qasm2_circuit()` (down-converts a QASM3 program) and
-  `to_qasm3_circuit()` (up-converts a QASM2 program).
+  `to_qasm3_circuit()` (up-converts a QASM2 program). It also backs two more
+  SDK legs: CUDA-Q writes OpenQASM 3 via `cudaq_to_qasm3` (its QASM2 output
+  up-normalized) and MIMIQ reads OpenQASM 3 **text** via `qasm3_to_mimiq`
+  (down-normalized to QASM2, then `qasm2_to_mimiq`). The normalization only
+  covers **straight-line** programs and does not decompose gates beyond the
+  `u1`/`cu1` ↔ `p`/`cp` rename: classical control flow
+  (`if`/`for`/`while`/`switch` blocks) is not handled, `gphase` is silently
+  dropped on the QASM3→QASM2 leg, and other stdlib gates
+  (`u2`/`u3`/`cu`/`cu2`/`cu3`) are not mapped. The circuit-conversion test
+  battery surfaces these inherent limits as declared loss categories
+  (`qasm_control_flow`, `qasm_gphase`, `qasm_stdlib_gate`) in its loss report.
 
 ```mermaid
 
@@ -144,6 +154,7 @@ flowchart LR
     QISKIT_IN -->|qiskit_to_qasm3| QASM3
     QISKIT_IN -->|qiskit_to_qir| QIR
     CUDAQ_IN -->|cudaq_to_qasm2| QASM2
+    CUDAQ_IN -->|"cudaq_to_qasm3 (via qasm2_to_qasm3)"| QASM3
     CUDAQ_IN -->|cudaq_to_qir| QIR
     MIMIQ_IN -->|mimiq_to_qasm2| QASM2
     PULSER_IN -->|pulser_to_pulserjson| PULSERJSON
@@ -164,6 +175,7 @@ flowchart LR
     QASM3 -->|qasm3_to_cudaq| CUDAQ_OUT
     QIR -->|qir_to_cudaq| CUDAQ_OUT
     QASM2 -->|qasm2_to_mimiq| MIMIQ_OUT
+    QASM3 -->|"qasm3_to_mimiq (via qasm3_to_qasm2)"| MIMIQ_OUT
 
     QASM2 -.->|qasm2_to_qasm3| QASM3
     QASM3 -.->|qasm3_to_qasm2| QASM2
@@ -184,7 +196,7 @@ flowchart LR
 |---|---|---|
 | Cirq | `QuantumProgram.from_cirq_circuit` | Cirq JSON, OpenQASM 2, OpenQASM 3, QIR |
 | Qiskit | `QuantumProgram.from_qiskit_circuit` | OpenQASM 2, OpenQASM 3, QIR |
-| CUDA Quantum | `QuantumProgram.from_cudaq_kernel` | OpenQASM 2, QIR |
+| CUDA Quantum | `QuantumProgram.from_cudaq_kernel` | OpenQASM 2, OpenQASM 3, QIR |
 | MIMIQ | `QuantumProgram.from_mimiq_circuit` | OpenQASM 2 |
 | Pulser | `QuantumProgram.from_pulser_sequence` | Pulser JSON |
 | Perceval | `QuantumProgram.from_perceval_circuit` | Perceval JSON |
@@ -195,7 +207,7 @@ flowchart LR
 | Cirq | `QuantumProgram.to_cirq_circuit` | OpenQASM 1/2/3, Cirq JSON |
 | Qiskit | `QuantumProgram.to_qiskit_circuit` | OpenQASM 1/2/3 |
 | CUDA Quantum | `QuantumProgram.to_cudaq_kernel` | OpenQASM 2/3, QIR |
-| MIMIQ | `QuantumProgram.to_mimiq_circuit` | OpenQASM 2 |
+| MIMIQ | `QuantumProgram.to_mimiq_circuit` | OpenQASM 2, OpenQASM 3 |
 | Pulser | `QuantumProgram.to_pulser_sequence` | Pulser JSON |
 | Perceval | `QuantumProgram.to_perceval_circuit` | Perceval JSON |
 | Perceval | `QuantumProgram.to_perceval_experiment` | Perceval Experiment JSON |

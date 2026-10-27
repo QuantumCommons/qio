@@ -16,10 +16,12 @@
 Concrete :class:`Paradigm` of the *gate-based* circuits: the static reference
 circuits (``bell``, ``ghz``, ``rotations``, ... defined here as
 :class:`GateSpec`), the conversion graph
-(``cirq/qiskit -> qasm2/qasm3/cirqjson -> {cirq, qiskit, cudaq, mimiq}``) and
-every gate-oriented SDK check (Cirq / Qiskit / OpenQASM / MIMIQ / CirqJSON +
-the no-execution CUDA-Q loops).
+(``cirq/qiskit -> qasm2/qasm3/cirqjson -> {cirq, qiskit, cudaq, mimiq}`` and
+the CUDA-Q / QIR / qasm3<-mimiq legs) and every gate-oriented SDK check (Cirq /
+Qiskit / OpenQASM / MIMIQ / CirqJSON + the no-execution CUDA-Q loops).
 """
+
+import re
 
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
@@ -40,8 +42,12 @@ from circuit_testing import (
     LOSS_CUDAQ_GATE_DECOMPOSITION,
     LOSS_GLOBAL_PHASE,
     LOSS_MEASUREMENT_MAPPING,
+    LOSS_QASM_CONTROL_FLOW,
+    LOSS_QASM_GATE_SET,
+    LOSS_QASM_GPHASE,
     LOSS_QUBIT_TOPOLOGY,
     LOSS_ROTATION_PRECISION,
+    QASM_NORMALIZATION_LIMIT_LOSSES,
     Paradigm,
     _info_and,
     _resolve_serialization,
@@ -542,6 +548,34 @@ def check_qasm_cudaq_documented(version: int) -> Callable:
                 )
 
     return _check
+
+
+def check_qasm_normalization_limitations(result, expected: Optional[ReferenceCircuit] = None) -> None:
+    """Probes a QASM 3 intermediate for constructs outside the straight-line
+    subset of the self-hosted qasm2 <-> qasm3 text normalization, recording each
+    occurrence as a declared loss (see :data:`QASM_NORMALIZATION_LIMIT_LOSSES`).
+    It is a *standalone* probe - exercised directly by
+    ``test_qasm_normalization_limitations`` on the cudaq->qasm3
+    (~``qasm2_to_qasm3``, up-normalization) and qasm3->mimiq
+    (~``qasm3_to_qasm2``, then ``qasm2_to_mimiq``) wires - and is not wired
+    into the edge steps: on the straight-line reference set it stays silent
+    anyway, and hooking it in would only add per-circuit scanning. When it
+    fires (control flow, ``gphase`` or a non-mapped stdlib gate is actually
+    present) it records the limitation so the loss report surfaces it instead
+    of failing or silently swallowing it.
+    """
+    source = _resolve_serialization(result)
+    if not source:
+        return
+    markers = (
+        (LOSS_QASM_CONTROL_FLOW, r"\b(?:if|for|while|switch)\b|\{|def\s+"),
+        (LOSS_QASM_GPHASE, r"\bgphase\b"),
+        (LOSS_QASM_GATE_SET, r"\b(?:u2|u3|cu2|cu3|cu)\b"),
+    )
+    for category, pattern in markers:
+        match = re.search(pattern, source)
+        if match:
+            record_loss(category, detail=f"construct present in QASM3: {match.group(0)!r}")
 
 
 def check_cirq_light(result, expected: Optional[ReferenceCircuit] = None) -> None:
@@ -1131,6 +1165,36 @@ class GateParadigm(Paradigm):
             check_cudaq,
             oracle="counts",
         )
+        add(
+            "cirq->qasm3->mimiq",
+            "cirq",
+            QuantumProgram.from_cirq_circuit,
+            Serialization.QASM_V3,
+            QuantumProgram.to_mimiq_circuit,
+            check_mimiq,
+            oracle="structural",
+            known_losses=(LOSS_ROTATION_PRECISION,) + QASM_NORMALIZATION_LIMIT_LOSSES,
+        )
+        add(
+            "qiskit->qasm3->mimiq",
+            "qiskit",
+            QuantumProgram.from_qiskit_circuit,
+            Serialization.QASM_V3,
+            QuantumProgram.to_mimiq_circuit,
+            check_mimiq,
+            oracle="structural",
+            known_losses=QASM_NORMALIZATION_LIMIT_LOSSES,
+        )
+        add(
+            "cudaq->qasm3->cudaq",
+            "cudaq",
+            QuantumProgram.from_cudaq_kernel,
+            Serialization.QASM_V3,
+            QuantumProgram.to_cudaq_kernel,
+            check_cudaq,
+            oracle="counts",
+            known_losses=QASM_NORMALIZATION_LIMIT_LOSSES,
+        )
 
         def _qasm2_to_qiskit(circuit_str):
             from qio.utils.conversion.program.qasm2_to_qiskit import convert
@@ -1207,12 +1271,6 @@ class GateParadigm(Paradigm):
             ),
         ),
         (
-            "from_cudaq_kernel -> QASM_V3",
-            lambda: QuantumProgram.from_cudaq_kernel(
-                _bell_cudaq(), dest_format=Serialization.QASM_V3
-            ),
-        ),
-        (
             "from_cudaq_kernel -> CIRQJSON",
             lambda: QuantumProgram.from_cudaq_kernel(
                 _bell_cudaq(), dest_format=Serialization.CIRQ_CIRCUIT_JSON_V1
@@ -1225,10 +1283,6 @@ class GateParadigm(Paradigm):
         (
             "to_qasm3_circuit on CIRQJSON",
             lambda: _cirq_program(Serialization.CIRQ_CIRCUIT_JSON_V1).to_qasm3_circuit(),
-        ),
-        (
-            "to_mimiq_circuit on QASM_V3",
-            lambda: _cirq_program(Serialization.QASM_V3).to_mimiq_circuit(),
         ),
         (
             "to_mimiq_circuit on CIRQJSON",

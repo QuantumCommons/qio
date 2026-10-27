@@ -343,6 +343,9 @@ class QuantumProgram:
         from qio.utils.conversion.program.qasm2_to_mimiq import (
             convert as qasm2_to_mimiq_convert,
         )
+        from qio.utils.conversion.program.qasm3_to_mimiq import (
+            convert as qasm3_to_mimiq_convert,
+        )
 
         serialization = self.serialization
 
@@ -352,6 +355,7 @@ class QuantumProgram:
         try:
             apply_unserialization = {
                 QuantumProgramSerializationFormat.QASM_V2: qasm2_to_mimiq_convert,
+                QuantumProgramSerializationFormat.QASM_V3: qasm3_to_mimiq_convert,
             }
 
             return apply_unserialization[self.serialization_format](serialization)
@@ -545,6 +549,9 @@ class QuantumProgram:
         from qio.utils.conversion.program.cudaq_to_qasm2 import (
             convert as cudaq_to_qasm2_convert,
         )
+        from qio.utils.conversion.program.cudaq_to_qasm3 import (
+            convert as cudaq_to_qasm3_convert,
+        )
         from qio.utils.conversion.program.cudaq_to_qir import (
             convert as cudaq_to_qir_convert,
         )
@@ -565,6 +572,7 @@ class QuantumProgram:
         try:
             apply_serialization = {
                 QuantumProgramSerializationFormat.QASM_V2: cudaq_to_qasm2_convert,
+                QuantumProgramSerializationFormat.QASM_V3: cudaq_to_qasm3_convert,
                 QuantumProgramSerializationFormat.QIR_V1: cudaq_to_qir_convert,
             }
 

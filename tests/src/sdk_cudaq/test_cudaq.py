@@ -7,6 +7,8 @@ from qio.core import (
     QuantumProgramResult,
     QuantumProgramResultCompressionFormat,
     QuantumProgram,
+    QuantumProgramCompressionFormat,
+    QuantumProgramSerializationFormat,
 )
 
 
@@ -93,6 +95,43 @@ def test_multi_qubit_kernel():
     assert len(counts) == 2
     assert "00" in counts
     assert "11" in counts
+
+
+def test_from_cudaq_kernel_qasm3():
+
+    @cudaq.kernel
+    def kernel():
+        qubits = cudaq.qvector(2)
+        h(qubits[0])
+        x.ctrl(qubits[0], qubits[1])
+        mz(qubits[0])
+        mz(qubits[1])
+
+    program = QuantumProgram.from_cudaq_kernel(
+        kernel,
+        dest_format=QuantumProgramSerializationFormat.QASM_V3,
+        compression_format=QuantumProgramCompressionFormat.NONE,
+    )
+    assert (
+        program.serialization_format == QuantumProgramSerializationFormat.QASM_V3
+    )
+    qasm3_text = program.serialization
+    assert "OPENQASM 3.0;" in qasm3_text
+    assert "qubit[2]" in qasm3_text
+    assert any(line.startswith(("h ", "h(")) for line in qasm3_text.splitlines())
+
+    # The QASM3 reads back into an equivalent, executable kernel.
+    kernel_from_program = program.to_cudaq_kernel()
+    counts = cudaq.sample(kernel_from_program, shots_count=200)
+    assert len(counts) == 2
+    assert "00" in counts
+    assert "11" in counts
+
+    compressed = QuantumProgram.from_cudaq_kernel(
+        kernel,
+        dest_format=QuantumProgramSerializationFormat.QASM_V3,
+    )
+    assert compressed.to_cudaq_kernel() is not None
 
 
 def test_qvector_kernel():

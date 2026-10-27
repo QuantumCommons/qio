@@ -135,6 +135,24 @@ LOSS_MEASUREMENT_MAPPING = "measurement_mapping"
 LOSS_SYMBOLIC_PARAMS = "symbolic_parameters"
 LOSS_ANALOG_DEVICE = "analog_device"
 
+# Inherent limitations of the *self-hosted* qasm2 <-> qasm3 text normalization
+# that the ``cudaq_to_qasm3`` and ``qasm3_to_mimiq`` converters are chained on
+# (they only re-express straight-line, literal-parameter stdgates programs).
+# They are declared on the mixing legs (``known_losses``) and recorded - with a
+# concrete detail - by :func:`check_qasm_normalization_limitations` whenever the
+# corresponding construct is actually present in the serialized text, so the
+# limitation is surfaced by the loss report instead of failing or being silently
+# swallowed.
+LOSS_QASM_CONTROL_FLOW = "qasm_control_flow"
+LOSS_QASM_GPHASE = "qasm_gphase"
+LOSS_QASM_GATE_SET = "qasm_stdlib_gate"
+
+QASM_NORMALIZATION_LIMIT_LOSSES = (
+    LOSS_QASM_CONTROL_FLOW,
+    LOSS_QASM_GPHASE,
+    LOSS_QASM_GATE_SET,
+)
+
 # Circuit-level information that QASM (2/3) and the CUDA-Q gate-basis rewrite
 # inherently drop; declared as known losses on the QASM/CUDA-Q edges. The
 # CirqJSON edge declares none of them: CirqJSON is exact for these properties.
@@ -211,6 +229,27 @@ _LOSS_DESCRIPTIONS = {
         "that surfaces (tolerated, not failing) any future pulser/device "
         "version that would drop the device from the serialization"
     ),
+    LOSS_QASM_CONTROL_FLOW: (
+        "the cudaq_to_qasm3 / qasm3_to_mimiq converters ride the self-hosted "
+        "qasm2 <-> qasm3 text normalization, which handles straight-line gate "
+        "programs only: classical control flow (if/else, for/while/switch) and "
+        "gate-definition blocks / subroutines are not re-expressed between the "
+        "two grammars (e.g. QASM3 'if (c[0])' is not transcribed to the QASM2 "
+        "'if (c[0]==1)' form), and block statements shatter on the ';' split"
+    ),
+    LOSS_QASM_GPHASE: (
+        "the QASM3 -> QASM2 leg silently drops global-phase statements "
+        "(gphase(...) with a '// dropped' comment): QASM2 has no "
+        "representation for them, so a non-zero global phase is lost on the "
+        "qasm3 -> mimiq path"
+    ),
+    LOSS_QASM_GATE_SET: (
+        "the qasm2 <-> qasm3 text normalization only renames u1/cu1 <-> p/cp; "
+        "it neither decomposes nor maps any other stdlib gate whose spelling "
+        "differs between the two grammars (u2/u3/cu3/cu, ...), so such gates "
+        "are passed through unmapped and may not exist in the target grammar's "
+        "include file"
+    ),
 }
 
 _LOSS_REPORT: Dict[str, Dict[str, Dict[str, Any]]] = {}
@@ -234,6 +273,15 @@ GENERIC_FEATURE_COVERAGE = (
         "no dynamic reference circuits; Qiskit IfElseOp/WhileOp and QASM3 "
         "control flow are outside the normalized gate set (would need new "
         "builders and checks)",
+    ),
+    (
+        "qasm2<->qasm3 text normalization",
+        "straight-line only",
+        "the cudaq_to_qasm3 / qasm3_to_mimiq converters chain on the "
+        "self-hosted text converters: literal-parameter stdgates round-trip; "
+        "classical control flow, gphase (silently dropped on the QASM3->QASM2 "
+        "leg) and non-mapped stdlib gates are declared 'qasm_control_flow' / "
+        "'qasm_gphase' / 'qasm_stdlib_gate'",
     ),
     (
         "circuit metadata & global phase",
