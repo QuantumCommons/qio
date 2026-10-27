@@ -232,6 +232,8 @@ flowchart LR
         QISKIT_IN["Qiskit<br/>(qiskit.result.Result)"]
         CUDAQ_IN["CUDA Quantum<br/>(cudaq.SampleResult)"]
         MIMIQ_IN["MIMIQ<br/>(mimiqcircuits.QCSResults)"]
+        PULSER_IN["Pulser<br/>(pulser.backend.Results)"]
+        PERCEVAL_IN["Perceval<br/>(pcvl.SVDistribution / pcvl.BSCount </br> pcvl.BSDistribution / pcvl.BSSamples)"]
     end
 
     subgraph SER["Result serialization format"]
@@ -240,6 +242,8 @@ flowchart LR
         QISKITJSON["Qiskit result JSON<br/>(QISKIT_RESULT_JSON_V1)"]
         CUDAQJSON["CUDA Quantum sample JSON<br/>(CUDAQ_SAMPLE_RESULT_JSON_V1)"]
         MIMIQJSON["MIMIQ QCSR JSON<br/>(MIMIQ_QCSR_JSON_V1)"]
+        PULSERJSON["Pulser Result JSON<br/>(PULSER_RESULT_JSON_V1)"]
+        PERCEVALJSON["Perceval Result JSON<br/>(PERCEVAL_RESULT_JSON_V1)"]
     end
 
     subgraph OUT["Output SDKs (read from format)"]
@@ -248,17 +252,23 @@ flowchart LR
         QISKIT_OUT["Qiskit<br/>(qiskit.result.Result)"]
         CUDAQ_OUT["CUDA Quantum<br/>(cudaq.SampleResult)"]
         MIMIQ_OUT["MIMIQ<br/>(mimiqcircuits.QCSResults)"]
+        PULSER_OUT["Pulser<br/>(pulser.backend.Results)"]
+        PERCEVAL_OUT["Perceval<br/>(pcvl.SVDistribution / pcvl.BSCount </br> pcvl.BSDistribution / pcvl.BSSamples)"]
     end
 
     CIRQ_IN -->|cirq_to_dict| CIRQJSON
     QISKIT_IN -->|qiskit_to_dict| QISKITJSON
     CUDAQ_IN -->|cudaq_sample_to_dict| CUDAQJSON
     MIMIQ_IN -->|mimiq_to_dict| MIMIQJSON
+    PULSER_IN -->|pulser_to_dict| PULSERJSON
+    PERCEVAL_IN -->|perceval_to_dict| PERCEVALJSON
 
     CIRQJSON -->|dict_to_cirq| CIRQ_OUT
     QISKITJSON -->|dict_to_qiskit| QISKIT_OUT
     CUDAQJSON -->|dict_to_cudaq_sample| CUDAQ_OUT
     MIMIQJSON -->|dict_to_mimiq| MIMIQ_OUT
+    PULSERJSON -->|dict_to_pulser| PULSER_OUT
+    PERCEVALJSON -->|dict_to_perceval| PERCEVAL_OUT
 
     CIRQJSON -->|cirq_to_qiskit| QISKIT_OUT
     CIRQJSON -->|cirq_to_mimiq| MIMIQ_OUT
@@ -271,8 +281,8 @@ flowchart LR
     classDef sdk fill:#e1f5fe,stroke:#01579b,stroke-width:2px,color:#00344f,font-weight:bold,rx:20px,ry:20px;
     classDef fmt fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px,color:#062b07,font-weight:bold,rx:20px,ry:20px;
 
-    class CIRQ_IN,QISKIT_IN,CUDAQ_IN,MIMIQ_IN,CIRQ_OUT,QISKIT_OUT,CUDAQ_OUT,MIMIQ_OUT sdk;
-    class CIRQJSON,QISKITJSON,CUDAQJSON,MIMIQJSON fmt;
+    class CIRQ_IN,QISKIT_IN,CUDAQ_IN,MIMIQ_IN,PULSER_IN,PERCEVAL_IN,CIRQ_OUT,QISKIT_OUT,CUDAQ_OUT,MIMIQ_OUT,PULSER_OUT,PERCEVAL_OUT sdk;
+    class CIRQJSON,QISKITJSON,CUDAQJSON,MIMIQJSON,PULSERJSON,PERCEVALJSON fmt;
 ```
 
 ### Entrypoints in `qio`
@@ -283,6 +293,8 @@ flowchart LR
 | Qiskit | `QuantumProgramResult.from_qiskit_result` | `QISKIT_RESULT_JSON_V1` |
 | CUDA Quantum | `QuantumProgramResult.from_cudaq_sample_result` | `CUDAQ_SAMPLE_RESULT_JSON_V1` |
 | MIMIQ | `QuantumProgramResult.from_mimiq_qcsr` | `MIMIQ_QCSR_JSON_V1` |
+| PULSER | `QuantumProgramResult.from_pulser_result` | `PULSER_RESULT_JSON_V1` |
+| PERCEVAL | `QuantumProgramResult.from_perceval_result` | `PERCEVAL_RESULT_JSON_V1` |
 
 | Target SDK | Read method | Supported input formats |
 |---|---|---|
@@ -290,3 +302,5 @@ flowchart LR
 | Qiskit | `QuantumProgramResult.to_qiskit_result` | `QISKIT_RESULT_JSON_V1`, `CIRQ_RESULT_JSON_V1`, `CUDAQ_SAMPLE_RESULT_JSON_V1`, `MIMIQ_QCSR_JSON_V1` |
 | CUDA Quantum | `QuantumProgramResult.to_cudaq_sample_result` | `CUDAQ_SAMPLE_RESULT_JSON_V1` |
 | MIMIQ | `QuantumProgramResult.to_mimiq_qcsr` | `MIMIQ_QCSR_JSON_V1`, `CIRQ_RESULT_JSON_V1`, `QISKIT_RESULT_JSON_V1` |
+| PULSER | `QuantumProgramResult.to_pulser_result` | `PULSER_RESULT_JSON_V1` |
+| PERCEVAL | `QuantumProgramResult.to_perceval_result` | `PERCEVAL_RESULT_JSON_V1` |
