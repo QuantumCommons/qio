@@ -11,34 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""QIR (LLVM IR) to CUDA-Q kernel conversion.
-
-Reconstructs a ``cudaq.PyKernel`` from a QIR program by "disassembling" the
-flat ``__quantum__qis__*`` gate calls and replaying them on the CUDA-Q builder
-API (``cudaq.make_kernel``). No intermediate serialization format is involved.
-
-Scope: *straight-line* QIR, in either of the two *qubit-literal* profiles the
-qio producers emit:
-
-- **thin** QIR (``cirq_to_qir`` / ``qiskit_to_qir`` / ``qasm3_to_qir``): an
-  entry function whose qubit operands are constant pointers (``ptr null`` /
-  ``ptr inttoptr (i64 i to ptr)``) and rotation angles are literal ``double``
-  constants;
-- **CUDA-Q** QIR (``cudaq_to_qir``): qubits allocated with
-  ``__quantum__rt__qubit_allocate_array`` and referred to through SSA
-  ``array_get_element_ptr_1d`` / ``load`` chains, with controlled single-target
-  gates emitted through ``generalizedInvokeWithRotationsControlsTargets``
-  (zero-rotation ``x__ctl`` / ``z__ctl``, i.e. ``cx`` / ``cz``).
-
-Richer QIR (computed SSA angles, unhandled control profiles, mid-circuit
-control flow) raises :class:`QirToCudaqError`: it would need a full SSA value
-resolver, which is out of scope for this converter.
-
-The decoding step (:func:`decode`) only depends on ``pyqir`` and is therefore
-fully testable without CUDA-Q; the CUDA-Q builder emission (:func:`convert`) is
-a thin layer on top.
-"""
-
 from __future__ import annotations
 
 import re
