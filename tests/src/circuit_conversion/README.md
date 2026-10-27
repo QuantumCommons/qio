@@ -299,7 +299,9 @@ Edges are built per paradigm, in that paradigm's `build_edges()`.
    the bottom registry section; the facade (`build_edges`,
    `REFERENCE_CIRCUITS`, `UNSUPPORTED_CONVERSIONS`,
    `CIRCUIT_FEATURE_COVERAGE`) aggregates it automatically.
-3. Add the SDK to `tests/requirements.txt` (kept unpinned, like `pulser`).
+3. Add the SDK to the paradigm's requirements file (`tests/requirements-gate.txt`
+   / `tests/requirements-analog.txt` / `tests/requirements-photonic.txt`),
+   kept unpinned, like `pulser`.
 
 ## How to add an SDK to an existing paradigm
 
@@ -311,7 +313,7 @@ Edges are built per paradigm, in that paradigm's `build_edges()`.
   normalization, and extend `_to_unitary` if the `unitary` oracle must cover it.
 - qio converters are lazy, so the SDK is only imported inside the checks.
 
-## Perceval / MIMIQ protobuf conflict
+## Paradigm batteries and the MIMIQ / Perceval protobuf conflict
 
 `mimiqcircuits` and Perceval (via `exqalibur`) both call for a proto file named
 `circuit.proto` into protobuf's *global* descriptor pool. Whichever SDK is
@@ -319,17 +321,20 @@ imported second in a Python process fails with
 `TypeError: duplicate file name circuit.proto` - the two cannot coexist in one
 process with the pinned versions.
 
-The photonic battery therefore runs in its **own pytest invocation**, in which
-mimiq is never imported (all SDK imports in the battery are lazy, inside the
-checks - see the *conventions* note above):
+The battery is therefore split by **programming paradigm**, each selected with
+its own pytest marker and running in its own environment (all SDK imports in
+the battery are lazy, inside the checks - see the *conventions* note above):
 
-- the main invocation runs everything selected by `-k "not perceval"` (MIMIQ
-  and the other SDKs; Perceval is never imported there);
-- a second invocation runs only `-k "perceval"` tests, importing Perceval
-  directly in-process.
+- `-m gate` runs the gate-paradigm tests (MIMIQ and the other gate SDKs;
+  Perceval and Pulser are never imported there);
+- `-m analog` runs the analog (Pulser) tests;
+- `-m photonic` runs the photonic (Perceval) tests in their own process, in
+  which mimiq is never imported.
 
-`tests/Makefile`'s `test` / `test-circuit-conv` targets execute both
-invocations; `test-photonic` runs the Perceval one alone.
+`tests/Makefile`'s `test` target runs all three invocations (each in its own
+environment); `test-gate` / `test-analog` / `test-photonic` run one paradigm
+each, and `test-circuit-conv-{gate,analog,photonic}` split the circuit battery
+only.
 
 ## Running
 
@@ -337,20 +342,22 @@ The `qio` package must be importable (it is a source checkout; the test
 helpers do not install it). From the repo root:
 
 ```bash
-# full battery (two invocations, MIMIQ and Perceval in separate processes)
-make -C tests test-circuit-conv
+# full battery (all paradigms)
+make -C tests test
 
-# only the MIMIQ/analog/gate side of the battery
-python -m pytest tests/src/circuit_conversion/ -s --showprogress -vv -k "not perceval"
+# gate side only
+python -m pytest tests/src/circuit_conversion/ -s --showprogress -vv -m gate
 
-# only the photonic (Perceval) side - no mimiq in this process
-python -m pytest tests/src/circuit_conversion/ -s --showprogress -vv -k "perceval"
+# analog (Pulser) side only
+python -m pytest tests/src/circuit_conversion/ -s --showprogress -vv -m analog
+
+# photonic (Perceval) side only
+python -m pytest tests/src/circuit_conversion/ -s --showprogress -vv -m photonic
 ```
 
 The CUDA-Q edges require `cudaq`, which is not installable in every
-environment; to run the battery without it (locally):
+environment; to run the gate battery without it (locally):
 
 ```bash
-python -m pytest tests/src/circuit_conversion/ -s --showprogress -vv -k "not cudaq and not perceval"
-python -m pytest tests/src/circuit_conversion/ -s --showprogress -vv -k "perceval"
+python -m pytest tests/src/circuit_conversion/ -s --showprogress -vv -m gate -k "not cudaq"
 ```

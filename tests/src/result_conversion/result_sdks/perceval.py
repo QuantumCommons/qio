@@ -107,6 +107,7 @@ def check_bsdistribution(result, expected: ReferenceResult = None) -> None:
 class PercevalSDK(ResultSDK):
     kind = "perceval"
     display = "perceval.BSSamples"
+    paradigm = "photonic"
     fmt = Serialization.PERCEVAL_RESULT_JSON_V1
     fmt_label = "perceval_result_json_v1"
     dict_keys = ("perceval_result",)

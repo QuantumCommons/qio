@@ -179,31 +179,33 @@ An SDK is one class + one register line; nothing in the driver changes.
 
 - All SDK imports stay lazy (inside `build`/`check`; the `*_to_dict` converters
   are resolved by `_LazyFn` on first call), so collection never imports an SDK.
-- **Perceval (photonic) leg — separate pytest invocation**: mimiqcircuits and
-  Perceval both register a `circuit.proto` in protobuf's global descriptor
-  pool, so they cannot be imported in the same Python process (either order).
-  The perceval leg (the `perceval.BSSamples -> perceval_result_json_v1 ->
-  perceval.BSSamples` edge and every negative on/from `..._PERCEVAL...`) is
-  therefore selected with `-k "perceval"` and runs in the perceval-only
-  invocation; the main invocation uses `-k "not perceval"`. Both use the exact
-  same node ids, which always contain `perceval` for this leg. The two
-  negatives that would pull mimiqcircuits into that process
-  (`to_mimiq_qcsr on PERCEVAL_RESULT_JSON_V1`,
-  `to_perceval_result on MIMIQ_QCSR_JSON_V1`) are pinned last by
-  `_to_negatives()`.
+- **Paradigm tags — separate invocations**: the result battery is split by
+  programming paradigm, tagged with pytest markers: cirq/qiskit/cudaq/mimiq
+  results are ``gate``, the pulser result is ``analog`` and the perceval leg is
+  ``photonic``. mimiqcircuits and Perceval both register a ``circuit.proto`` in
+  protobuf's global descriptor pool, so they cannot be imported in the same
+  Python process (either order) — the photonic leg therefore runs in the
+  photonic-only invocation (``-m photonic``) and the others in their own
+  paradigm invocations. Each negative case is tagged by the paradigm of its
+  *input* SDK: the two cross-SDK negatives (``to_mimiq_qcsr on
+  PERCEVAL_RESULT_JSON_V1``, ``to_perceval_result on MIMIQ_QCSR_JSON_V1``) each
+  run in the environment where the *other* SDK is absent, so it raises the
+  ImportError the negative checks require — mimiq and Perceval are never
+  imported together.
 
 ## Running
 
 `result_testing.py` itself imports no SDK, and the battery needs the repo root
 on `sys.path` when run from `tests/` (e.g. `PYTHONPATH=..` or installing the
-wheel), so the Perceval leg can be deselected without pulling mimiqcircuits:
+wheel), so the photonic leg can be deselected without pulling mimiqcircuits:
 
 ```bash
 cd tests
-PYTHONPATH=.. python -m pytest src/result_conversion/ -s --showprogress -vv -k "not perceval"
-PYTHONPATH=.. python -m pytest src/result_conversion/ -s --showprogress -vv -k "perceval"
+PYTHONPATH=.. python -m pytest src/result_conversion/ -s --showprogress -vv -m gate
+PYTHONPATH=.. python -m pytest src/result_conversion/ -s --showprogress -vv -m analog
+PYTHONPATH=.. python -m pytest src/result_conversion/ -s --showprogress -vv -m photonic
 ```
 
-The `test-result-conv` target in the `tests/` Makefile runs exactly these two
-invocations (mirroring the circuit battery). Heavy SDKs
+The `test-result-conv-{gate,analog,photonic}` targets in the `tests/` Makefile
+run these invocations (mirroring the circuit battery). Heavy SDKs
 (`qsimcirq`/`qiskit-aer`/`quantanium`) are not required here.

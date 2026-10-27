@@ -18,6 +18,10 @@
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # ... (insérer la licence) ...
+import pytest
+
+pytestmark = pytest.mark.gate
+
 import os
 import tempfile
 

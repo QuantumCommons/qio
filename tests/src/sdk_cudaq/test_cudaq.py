@@ -1,3 +1,7 @@
+import pytest
+
+pytestmark = pytest.mark.gate
+
 import cudaq
 import numpy as np
 

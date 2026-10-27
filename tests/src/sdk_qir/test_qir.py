@@ -29,6 +29,10 @@
   with the independent Qiskit parsers.
 """
 
+import pytest
+
+pytestmark = pytest.mark.gate
+
 import cirq
 from pyqir import Context, Module
 from qiskit import QuantumCircuit, qasm2, qasm3

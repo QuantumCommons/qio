@@ -32,10 +32,10 @@ Design (mirrors ``circuit_testing`` for circuits):
   cases) is the **complement** of the graph, derived automatically.
 - **SDK-lazy collection** : this module and the adapters import no SDK at
   import time (the ``<sdk>_to_dict`` converters are pulled in lazily on first
-  use). Two reasons: the battery must stay selectable by ``-k perceval``
-  without importing mimiqcircuits (mimiq's and Perceval's ``circuit.proto``
-  conflict in protobuf's global descriptor pool), and collection must not
-  depend on any heavy SDK presence.
+  use). Two reasons: the battery must stay selectable per paradigm (``-m
+  photonic``) without importing mimiqcircuits (mimiq's and Perceval's
+  ``circuit.proto`` conflict in protobuf's global descriptor pool), and
+  collection must not depend on any heavy SDK presence.
 - **Metadata probes** : on top of the counts, target-SDK objects are probed
   for execution metadata (backend identity, job ids, date, statevector, MIMIQ
   ``zstates``/``fidelities``/``avggateerrors``/``timings``/``amplitudes``,
@@ -258,6 +258,7 @@ class ResultSDK(ABC):
 
     kind: str  # registry key / input_kind ("cirq")
     display: str  # type written in edge ids ("cirq.Result")
+    paradigm: str = "gate"  # paradigm owning this SDK (gate | analog | photonic)
     fmt: Serialization  # the unique intermediate format this source writes
     fmt_label: str  # its label in edge ids ("cirq_result_json_v1")
     dict_keys: Tuple[str, ...]  # mandatory top-level keys of the intermediate dict
@@ -305,8 +306,8 @@ class ResultSDK(ABC):
 @dataclass(frozen=True)
 class _LazyFn:
     """Callable resolving the actual converter on the *first call*, so building
-    the edges at collection time never imports an SDK (the perceval legs must be
-    selectable by ``-k perceval`` without pulling mimiqcircuits into the
+    the edges at collection time never imports an SDK (the photonic legs must be
+    selectable by ``-m photonic`` without pulling mimiqcircuits into the
     process)."""
 
     loader: Callable[[], Callable]
@@ -331,6 +332,7 @@ class ConversionEdge:
     input_fn: Callable[[ReferenceResult], Any]
     steps: Tuple[Step, ...]
     known_losses: Tuple[str, ...] = ()  # inherent information losses of the path
+    paradigm: str = "gate"  # paradigm of the input SDK (gate | analog | photonic)
 
 
 def convert(result, converter, *args, checks=(), expected=None, **kwargs) -> Any:
@@ -453,11 +455,9 @@ def _neg_op(input_sdk: ResultSDK, target_sdk: ResultSDK) -> Callable:
     return op
 
 
-def _to_negatives() -> Tuple[Tuple[str, Callable], ...]:
+def _to_negatives() -> Tuple[Tuple[str, Callable, str], ...]:
     """Derives the negative cases: every ``(input, target)`` pair not in
-    :data:`EDGES` must raise. The two cases that pull mimiqcircuits into the
-    perceval-only invocation are pinned last (mimiq/Perceval ``circuit.proto``
-    conflict)."""
+    :data:`EDGES` must raise, each tagged with the input SDK's paradigm."""
     allowed = frozenset(
         (inp.kind, tgt.kind) for inp, targets in EDGES for tgt in targets
     )
@@ -470,15 +470,9 @@ def _to_negatives() -> Tuple[Tuple[str, Callable], ...]:
                 (
                     f"{target_sdk.read.__name__} on {input_sdk.fmt.name}",
                     _neg_op(input_sdk, target_sdk),
+                    input_sdk.paradigm,
                 )
             )
-    # mimiq cannot be imported in a Perceval process (protobuf conflict); it
-    # must therefore be the last thing tried there.
-    _MIMIQ_MUST_BE_LAST = {
-        "to_mimiq_qcsr on PERCEVAL_RESULT_JSON_V1",
-        "to_perceval_result on MIMIQ_QCSR_JSON_V1",
-    }
-    negatives.sort(key=lambda item: item[0] in _MIMIQ_MUST_BE_LAST)
     return tuple(negatives)
 
 
@@ -538,6 +532,7 @@ def build_edges(compression: Compression) -> Tuple[ConversionEdge, ...]:
                         input_fn=lambda ref, b=build: b(ref),
                         steps=steps + (Step(type(target).read, {}, (read_check,)),),
                         known_losses=known,
+                        paradigm=input_sdk.paradigm,
                     )
                 )
     return tuple(edges)

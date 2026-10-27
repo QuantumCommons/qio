@@ -11,14 +11,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: main
-            requirements: tests/requirements.txt
+          - name: gate
+            requirements: tests/requirements-gate.txt
             pytest-targets: tests/
-            pytest-select: '-k "not perceval"'
-          - name: perceval
-            requirements: tests/requirements-perceval.txt
+            pytest-select: '-m gate'
+          - name: analog
+            requirements: tests/requirements-analog.txt
             pytest-targets: 'tests/src/circuit_conversion/ tests/src/result_conversion/'
-            pytest-select: '-k "perceval"'
+            pytest-select: '-m analog'
+          - name: photonic
+            requirements: tests/requirements-photonic.txt
+            pytest-targets: 'tests/src/circuit_conversion/ tests/src/result_conversion/'
+            pytest-select: '-m photonic'
 
     steps:
     - uses: actions/checkout@v4

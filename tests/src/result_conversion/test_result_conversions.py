@@ -32,34 +32,39 @@ from result_testing import (
 
 COMPRESSIONS = (NONE, ZLIB)
 
-# Expand: edge x result x compression.
+# Expand: edge x result x compression, tagging each case with its paradigm.
 RESULT_CONVERSIONS = []
 for compression in COMPRESSIONS:
     for edge in build_edges(compression):
         for reference in REFERENCE_RESULTS:
-            RESULT_CONVERSIONS.append((edge, reference, compression))
+            RESULT_CONVERSIONS.append(
+                pytest.param(
+                    edge,
+                    reference,
+                    compression,
+                    id=f"{edge.id}|{reference.name}|{compression.name}",
+                    marks=getattr(pytest.mark, edge.paradigm),
+                )
+            )
 
-RESULT_CONVERSIONS_IDS = [
-    f"{edge.id}|{reference.name}|{compression.name}"
-    for edge, reference, compression in RESULT_CONVERSIONS
-]
 
-
-@pytest.mark.parametrize(
-    "edge,reference,compression",
-    RESULT_CONVERSIONS,
-    ids=RESULT_CONVERSIONS_IDS,
-)
+@pytest.mark.parametrize("edge,reference,compression", RESULT_CONVERSIONS)
 def test_result_conversion(edge, reference, compression):
     run_path(edge, reference)
 
 
 @pytest.mark.parametrize(
     "case",
-    UNSUPPORTED_CONVERSIONS,
-    ids=[name for name, _ in UNSUPPORTED_CONVERSIONS],
+    [
+        pytest.param(
+            (operation,),
+            id=name,
+            marks=getattr(pytest.mark, paradigm),
+        )
+        for name, operation, paradigm in UNSUPPORTED_CONVERSIONS
+    ],
 )
 def test_unsupported_conversion(case):
-    _, operation = case
+    (operation,) = case
     with pytest.raises(Exception):
         operation()

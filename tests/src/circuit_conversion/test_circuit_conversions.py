@@ -39,40 +39,47 @@ COMPRESSIONS = (NONE, ZLIB)
 # restrict the edges it runs on (``supports_edge``) - e.g. symbolic-parameter
 # circuits only survive QASM3/CirqJSON - and can force its oracle. The
 # paradigm-agnostic run filter (``circuit_runnable``) centralizes these rules.
+# Tag each case with its owning paradigm so the battery is selectable per paradigm.
 CIRCUIT_CONVERSIONS = []
 for compression in COMPRESSIONS:
     for edge in build_edges(compression):
         for circuit in REFERENCE_CIRCUITS:
             if not circuit_runnable(edge, circuit):
                 continue
-            CIRCUIT_CONVERSIONS.append((edge, circuit, compression))
+            CIRCUIT_CONVERSIONS.append(
+                pytest.param(
+                    edge,
+                    circuit,
+                    compression,
+                    id=f"{edge.id}|{circuit.name}|{compression.name}",
+                    marks=getattr(pytest.mark, edge.paradigm),
+                )
+            )
 
-CIRCUIT_CONVERSIONS_IDS = [
-    f"{edge.id}|{circuit.name}|{compression.name}"
-    for edge, circuit, compression in CIRCUIT_CONVERSIONS
-]
 
-
-@pytest.mark.parametrize(
-    "edge,circuit,compression",
-    CIRCUIT_CONVERSIONS,
-    ids=CIRCUIT_CONVERSIONS_IDS,
-)
+@pytest.mark.parametrize("edge,circuit,compression", CIRCUIT_CONVERSIONS)
 def test_circuit_conversion(edge, circuit, compression):
     run_path(edge, circuit)
 
 
 @pytest.mark.parametrize(
     "case",
-    UNSUPPORTED_CONVERSIONS,
-    ids=[name for name, _ in UNSUPPORTED_CONVERSIONS],
+    [
+        pytest.param(
+            (operation,),
+            id=name,
+            marks=getattr(pytest.mark, paradigm),
+        )
+        for name, operation, paradigm in UNSUPPORTED_CONVERSIONS
+    ],
 )
 def test_unsupported_conversion(case):
-    _, operation = case
+    (operation,) = case
     with pytest.raises(Exception):
         operation()
 
 
+@pytest.mark.gate
 def test_qasm_normalization_limitations():
     from circuit_testing import (
         NONE,

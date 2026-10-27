@@ -646,8 +646,11 @@ for _paradigm in (GATE_PARADIGM, ANALOG_PARADIGM, PHOTONIC_PARADIGM):
 
 # Aggregated registries: the rest of the battery consumes these module-level
 # names and automatically extends when a paradigm/edge/circuit is added.
+# Each entry carries the paradigm that owns it so tests can filter on it.
 UNSUPPORTED_CONVERSIONS = tuple(
-    case for _paradigm in PARADIGMS for case in _paradigm.unsupported_conversions
+    (name, operation, _paradigm.name)
+    for _paradigm in PARADIGMS
+    for name, operation in _paradigm.unsupported_conversions
 )
 
 CIRCUIT_FEATURE_COVERAGE = GENERIC_FEATURE_COVERAGE + tuple(

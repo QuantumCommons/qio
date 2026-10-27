@@ -37,6 +37,7 @@ _TOTAL_DURATION = 1000
 class PulserSDK(ResultSDK):
     kind = "pulser"
     display = "pulser.backend.Results"
+    paradigm = "analog"
     fmt = Serialization.PULSER_RESULT_JSON_V1
     fmt_label = "pulser_result_json_v1"
     dict_keys = ("atom_order", "results")
