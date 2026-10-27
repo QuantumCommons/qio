@@ -112,9 +112,7 @@ def test_from_cudaq_kernel_qasm3():
         dest_format=QuantumProgramSerializationFormat.QASM_V3,
         compression_format=QuantumProgramCompressionFormat.NONE,
     )
-    assert (
-        program.serialization_format == QuantumProgramSerializationFormat.QASM_V3
-    )
+    assert program.serialization_format == QuantumProgramSerializationFormat.QASM_V3
     qasm3_text = program.serialization
     assert "OPENQASM 3.0;" in qasm3_text
     assert "qubit[2]" in qasm3_text

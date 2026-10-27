@@ -13,5 +13,6 @@
 # limitations under the License.
 import mimiqcircuits as mc
 
+
 def convert(mimiq_circuit: mc.Circuit) -> str:
     return mc.qasm.dumps(mimiq_circuit)

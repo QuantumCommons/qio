@@ -186,9 +186,7 @@ def _deep_close(a: Any, b: Any, tol: float = 1e-6) -> bool:
     if isinstance(a, bool) or isinstance(b, bool):
         return a is b
     if isinstance(a, (int, float)) and isinstance(b, (int, float)):
-        return abs(float(a) - float(b)) <= tol * max(
-            1.0, abs(float(a)), abs(float(b))
-        )
+        return abs(float(a) - float(b)) <= tol * max(1.0, abs(float(a)), abs(float(b)))
     if isinstance(a, complex) and isinstance(b, complex):
         return abs(a - b) <= tol * max(1.0, abs(a), abs(b))
     if isinstance(a, complex) or isinstance(b, complex):
@@ -202,7 +200,9 @@ def _deep_close(a: Any, b: Any, tol: float = 1e-6) -> bool:
     return a == b
 
 
-def _run_probes(probes: Sequence[Probe], result: Any, expected: ReferenceResult) -> None:
+def _run_probes(
+    probes: Sequence[Probe], result: Any, expected: ReferenceResult
+) -> None:
     for probe in probes:
         try:
             observed = probe.extract(result)
@@ -256,18 +256,30 @@ class ResultSDK(ABC):
     lazily (never at collection time).
     """
 
-    kind: str                       # registry key / input_kind ("cirq")
-    display: str                    # type written in edge ids ("cirq.Result")
-    fmt: Serialization              # the unique intermediate format this source writes
-    fmt_label: str                  # its label in edge ids ("cirq_result_json_v1")
-    dict_keys: Tuple[str, ...]      # mandatory top-level keys of the intermediate dict
-    to_dict_module: Optional[str] = None   # qio "<sdk>_to_dict" module; None => direct wrap
-    from_dict: Optional[Callable] = None   # from_<sdk>_result_dict classmethod; None => direct wrap
-    wrap: Optional[Callable] = None        # from_<sdk>_result classmethod (object -> QuantumProgramResult)
-    read: Optional[Callable] = None        # to_<sdk>_result classmethod (QuantumProgramResult -> object)
-    target_losses: Tuple[str, ...] = ()            # losses inherent when arriving on this SDK
-    static_source_losses: Tuple[str, ...] = ()     # losses inherent when departing from this SDK
-    source_loss: Optional[Tuple[str, Optional[str]]] = None  # observed at the to_dict step
+    kind: str  # registry key / input_kind ("cirq")
+    display: str  # type written in edge ids ("cirq.Result")
+    fmt: Serialization  # the unique intermediate format this source writes
+    fmt_label: str  # its label in edge ids ("cirq_result_json_v1")
+    dict_keys: Tuple[str, ...]  # mandatory top-level keys of the intermediate dict
+    to_dict_module: Optional[str] = (
+        None  # qio "<sdk>_to_dict" module; None => direct wrap
+    )
+    from_dict: Optional[Callable] = (
+        None  # from_<sdk>_result_dict classmethod; None => direct wrap
+    )
+    wrap: Optional[Callable] = (
+        None  # from_<sdk>_result classmethod (object -> QuantumProgramResult)
+    )
+    read: Optional[Callable] = (
+        None  # to_<sdk>_result classmethod (QuantumProgramResult -> object)
+    )
+    target_losses: Tuple[str, ...] = ()  # losses inherent when arriving on this SDK
+    static_source_losses: Tuple[
+        str, ...
+    ] = ()  # losses inherent when departing from this SDK
+    source_loss: Optional[Tuple[str, Optional[str]]] = (
+        None  # observed at the to_dict step
+    )
     probes: Tuple[Probe, ...] = ()
     # Additional result *containers* of the same format (e.g. perceval
     # BSSamples/BSCount/BSDistribution): each ``(label, build, check)``
@@ -379,7 +391,9 @@ def check_to_dict(sdk: ResultSDK) -> Callable:
 
     def _check(result, expected: Optional[ReferenceResult] = None) -> None:
         assert result is not None, "to_dict produced nothing"
-        assert isinstance(result, dict), f"{sdk.kind} to_dict produced a non-dict: {type(result)}"
+        assert isinstance(
+            result, dict
+        ), f"{sdk.kind} to_dict produced a non-dict: {type(result)}"
         for key in sdk.dict_keys:
             assert key in result, f"{sdk.kind} dict missing {key!r}: {result.keys()}"
         if sdk.source_loss is not None:
@@ -444,7 +458,9 @@ def _to_negatives() -> Tuple[Tuple[str, Callable], ...]:
     :data:`EDGES` must raise. The two cases that pull mimiqcircuits into the
     perceval-only invocation are pinned last (mimiq/Perceval ``circuit.proto``
     conflict)."""
-    allowed = frozenset((inp.kind, tgt.kind) for inp, targets in EDGES for tgt in targets)
+    allowed = frozenset(
+        (inp.kind, tgt.kind) for inp, targets in EDGES for tgt in targets
+    )
     negatives = []
     for input_sdk in SDKS.values():
         for target_sdk in SDKS.values():
@@ -513,7 +529,9 @@ def build_edges(compression: Compression) -> Tuple[ConversionEdge, ...]:
                     f"{input_sdk.display}{suffix} -> {input_sdk.fmt_label} "
                     f"-> {target.display}{suffix}"
                 )
-                known = tuple(target.target_losses) + tuple(input_sdk.static_source_losses)
+                known = tuple(target.target_losses) + tuple(
+                    input_sdk.static_source_losses
+                )
                 edges.append(
                     ConversionEdge(
                         id=edge_id,

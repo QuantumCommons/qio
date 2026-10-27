@@ -156,7 +156,9 @@ class BaseProfile(Profile):
         i8p = pyqir.PointerType(pyqir.IntType(visitor._llvm_module.context, 8))
         for i in sorted(visitor._measured_results):
             result_ref = pyqir.result(visitor._llvm_module.context, i)
-            rt.result_record_output(visitor._builder, result_ref, pyqir.Constant.null(i8p))
+            rt.result_record_output(
+                visitor._builder, result_ref, pyqir.Constant.null(i8p)
+            )
 
 
 class AdaptiveProfile(Profile):
@@ -226,7 +228,9 @@ class AdaptiveProfile(Profile):
 
             rt.array_record_output(
                 visitor._builder,
-                pyqir.const(pyqir.IntType(visitor._llvm_module.context, 64), len(measured_ids)),
+                pyqir.const(
+                    pyqir.IntType(visitor._llvm_module.context, 64), len(measured_ids)
+                ),
                 null_ptr,
             )
             for bit_id in measured_ids:
@@ -238,7 +242,10 @@ class AdaptiveProfile(Profile):
 class ProfileRegistry:
     """Registry mapping profile names to their implementations."""
 
-    _profiles: dict[str, Profile] = {"Base": BaseProfile(), "AdaptiveExecution": AdaptiveProfile()}
+    _profiles: dict[str, Profile] = {
+        "Base": BaseProfile(),
+        "AdaptiveExecution": AdaptiveProfile(),
+    }
 
     @classmethod
     def get_profile(cls, name: str) -> Profile:
@@ -487,7 +494,9 @@ class QasmQIRVisitor(QIRVisitor):
             )
             register_name = register.identifier.name
 
-        size_map = self._global_qreg_size_map if is_qubit else self._global_creg_size_map
+        size_map = (
+            self._global_qreg_size_map if is_qubit else self._global_creg_size_map
+        )
         label_map = self._qubit_labels if is_qubit else self._clbit_labels
 
         size_map[register_name] = register_size
@@ -511,7 +520,9 @@ class QasmQIRVisitor(QIRVisitor):
             bit_list = [operation.measure.qubit] if qubits else [operation.target]
         else:
             bit_list = (
-                operation.qubits if isinstance(operation.qubits, list) else [operation.qubits]
+                operation.qubits
+                if isinstance(operation.qubits, list)
+                else [operation.qubits]
             )
 
         for bit in bit_list:
@@ -544,13 +555,17 @@ class QasmQIRVisitor(QIRVisitor):
 
         return qir_bits
 
-    def _check_qubit_use_after_measurement(self, qubit_ids: list[pyqir.Constant]) -> None:
+    def _check_qubit_use_after_measurement(
+        self, qubit_ids: list[pyqir.Constant]
+    ) -> None:
         """Enforce the profile's qubit use-after-measurement policy."""
         if self._profile.allow_qubit_use_after_measurement():
             return
         for qubit_id in qubit_ids:
             qubit_id_result = pyqir.ptr_id(qubit_id)
-            if qubit_id_result is not None and self._measured_qubits.get(qubit_id_result, False):
+            if qubit_id_result is not None and self._measured_qubits.get(
+                qubit_id_result, False
+            ):
                 raise_qasm3_error(
                     f"Base Profile violation: Cannot use qubit {qubit_id_result} after measurement"
                 )
@@ -656,7 +671,9 @@ class QasmQIRVisitor(QIRVisitor):
             qir_func(self._builder, *op_parameters, *op_qubits)
         else:
             if operation.arguments:
-                raise_qasm3_error(f"Non-parametric gate {op_name} should not have parameters")
+                raise_qasm3_error(
+                    f"Non-parametric gate {op_name} should not have parameters"
+                )
             qir_func(self._builder, *op_qubits)
 
     def _visit_external_gate_operation(self, operation: QuantumGate) -> None:
@@ -718,7 +735,9 @@ class QasmQIRVisitor(QIRVisitor):
                 condition.op != UnaryOperator["!"],
             )
         if isinstance(condition, BinaryExpression):
-            assert isinstance(condition.rhs, BooleanLiteral), "Invalid branching condition"
+            assert isinstance(
+                condition.rhs, BooleanLiteral
+            ), "Invalid branching condition"
             validate_index_expression(condition.lhs)
             return (
                 condition.lhs.collection.name,
@@ -732,7 +751,9 @@ class QasmQIRVisitor(QIRVisitor):
 
     def _visit_branching_statement(self, statement: BranchingStatement) -> None:
         """Visit an if/else branching statement."""
-        logger.debug("Visiting branching statement with profile '%s'", self._profile.name)
+        logger.debug(
+            "Visiting branching statement with profile '%s'", self._profile.name
+        )
 
         if not self._profile.capabilities.conditional_execution:
             raise_qasm3_error(
@@ -759,7 +780,9 @@ class QasmQIRVisitor(QIRVisitor):
 
         conditional_func(
             self._builder,
-            pyqir.result(self._llvm_module.context, self._clbit_labels[f"{reg_name}_{reg_id}"]),
+            pyqir.result(
+                self._llvm_module.context, self._clbit_labels[f"{reg_name}_{reg_id}"]
+            ),
             zero=zero_callback,
             one=one_callback,
         )
@@ -818,7 +841,9 @@ def raise_qasm3_error(
     """
     if span:
         logging.error(
-            "Error at line %s, column %s in QASM file", span.start_line, span.start_column
+            "Error at line %s, column %s in QASM file",
+            span.start_line,
+            span.start_column,
         )
     if raised_from:
         raise err_type(message) from raised_from
@@ -914,7 +939,9 @@ def convert(
     if isinstance(program, Program):
         program = openqasm3.dumps(program)
     elif not isinstance(program, str):
-        raise TypeError("Input quantum program must be of type openqasm3.ast.Program or str.")
+        raise TypeError(
+            "Input quantum program must be of type openqasm3.ast.Program or str."
+        )
 
     qasm3_module = pyqasm.loads(program)
     qasm3_module.unroll(external_gates=external_gates)

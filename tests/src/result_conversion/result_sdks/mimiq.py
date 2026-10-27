@@ -58,13 +58,48 @@ def _norm_dict(value: Optional[Dict]) -> Dict:
 
 
 MIMIQ_PROBES = (
-    Probe(LOSS_MIMIQ_METADATA, "simulator", lambda r: getattr(r, "simulator", None), lambda ref: ref.backend_name),
-    Probe(LOSS_MIMIQ_METADATA, "version", lambda r: getattr(r, "version", None), lambda ref: ref.backend_version),
-    Probe(LOSS_MIMIQ_METADATA, "timings", lambda r: _norm_dict(getattr(r, "timings", None)), lambda ref: dict(ref.timings or {})),
-    Probe(LOSS_MIMIQ_METADATA, "zstates", _mimiq_zstates, lambda ref: list(ref.zstates or [])),
-    Probe(LOSS_MIMIQ_METADATA, "fidelities", lambda r: _norm_seq(getattr(r, "fidelities", None)), lambda ref: list(ref.fidelities or [])),
-    Probe(LOSS_MIMIQ_METADATA, "avggateerrors", lambda r: _norm_seq(getattr(r, "avggateerrors", None)), lambda ref: list(ref.avggateerrors or [])),
-    Probe(LOSS_MIMIQ_AMPLITUDES, "amplitudes", _mimiq_amplitudes, lambda ref: ref._expected_amplitudes()),
+    Probe(
+        LOSS_MIMIQ_METADATA,
+        "simulator",
+        lambda r: getattr(r, "simulator", None),
+        lambda ref: ref.backend_name,
+    ),
+    Probe(
+        LOSS_MIMIQ_METADATA,
+        "version",
+        lambda r: getattr(r, "version", None),
+        lambda ref: ref.backend_version,
+    ),
+    Probe(
+        LOSS_MIMIQ_METADATA,
+        "timings",
+        lambda r: _norm_dict(getattr(r, "timings", None)),
+        lambda ref: dict(ref.timings or {}),
+    ),
+    Probe(
+        LOSS_MIMIQ_METADATA,
+        "zstates",
+        _mimiq_zstates,
+        lambda ref: list(ref.zstates or []),
+    ),
+    Probe(
+        LOSS_MIMIQ_METADATA,
+        "fidelities",
+        lambda r: _norm_seq(getattr(r, "fidelities", None)),
+        lambda ref: list(ref.fidelities or []),
+    ),
+    Probe(
+        LOSS_MIMIQ_METADATA,
+        "avggateerrors",
+        lambda r: _norm_seq(getattr(r, "avggateerrors", None)),
+        lambda ref: list(ref.avggateerrors or []),
+    ),
+    Probe(
+        LOSS_MIMIQ_AMPLITUDES,
+        "amplitudes",
+        _mimiq_amplitudes,
+        lambda ref: ref._expected_amplitudes(),
+    ),
 )
 
 
@@ -107,7 +142,9 @@ class MimiqSDK(ResultSDK):
     def check(self, result, expected: ReferenceResult = None) -> None:
         import mimiqcircuits
 
-        assert isinstance(result, mimiqcircuits.QCSResults), f"expected QCSResults, got {type(result)}"
+        assert isinstance(
+            result, mimiqcircuits.QCSResults
+        ), f"expected QCSResults, got {type(result)}"
         if expected is not None:
             histogram = result.histogram()
             counts = {key.to01(): int(count) for key, count in histogram.items()}

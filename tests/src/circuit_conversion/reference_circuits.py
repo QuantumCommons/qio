@@ -126,9 +126,7 @@ class _PulseExprParser:
     def __init__(self, text: str, variables: Dict[str, Any]):
         self._text = text
         self._variables = variables
-        self._tokens = [
-            m.group(1) for m in self._TOKEN.finditer(text)
-        ]
+        self._tokens = [m.group(1) for m in self._TOKEN.finditer(text)]
         self._pos = 0
 
     @property
@@ -438,10 +436,14 @@ class AnalogSpec:
 
     name: str
     register_coords: List[Tuple[float, float]]
-    channels: Dict[str, str]  # channel name -> pulser channel type ("rydberg_global", ...)
+    channels: Dict[
+        str, str
+    ]  # channel name -> pulser channel type ("rydberg_global", ...)
     pulses: List[PulseSpec]
     measure: bool = False
-    variables: Tuple[Tuple[str, str], ...] = ()  # (name, dtype) declared on the sequence
+    variables: Tuple[
+        Tuple[str, str], ...
+    ] = ()  # (name, dtype) declared on the sequence
     description: str = field(default="")
     oracle: str = field(default="structural")
 
@@ -586,7 +588,14 @@ class PhotonicSpec:
                 ancilla = 2 * self.n_qubits
                 cnot = HeraldedCnotItem().build_circuit()
                 qc.add(
-                    (2 * control, 2 * control + 1, 2 * data, 2 * data + 1, ancilla, ancilla + 1),
+                    (
+                        2 * control,
+                        2 * control + 1,
+                        2 * data,
+                        2 * data + 1,
+                        ancilla,
+                        ancilla + 1,
+                    ),
                     cnot,
                     merge=True,
                 )
@@ -610,7 +619,14 @@ class PhotonicSpec:
                 ancilla = 2 * self.n_qubits
                 cnot = HeraldedCnotItem().build_circuit()
                 exp.add(
-                    (2 * control, 2 * control + 1, 2 * data, 2 * data + 1, ancilla, ancilla + 1),
+                    (
+                        2 * control,
+                        2 * control + 1,
+                        2 * data,
+                        2 * data + 1,
+                        ancilla,
+                        ancilla + 1,
+                    ),
                     cnot,
                 )
             else:

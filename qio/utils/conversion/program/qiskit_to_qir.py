@@ -148,11 +148,15 @@ class BasicQiskitVisitor:
         self._clbit_labels.clear()
 
         if module.module is None:
-            raise ValueError("QiskitModule must have a PyQIR module set before visiting.")
+            raise ValueError(
+                "QiskitModule must have a PyQIR module set before visiting."
+            )
         self._module = module.module
         self._qiskit_module = module
         context = self._module.context
-        entry = entry_point(self._module, module.name, module.num_qubits, module.num_clbits)
+        entry = entry_point(
+            self._module, module.name, module.num_qubits, module.num_clbits
+        )
 
         self._entry_point = entry.name
         self._builder = Builder(context)
@@ -217,7 +221,9 @@ class BasicQiskitVisitor:
                 result_ref = pyqir.result(self._module.context, result_id)
                 rt.result_record_output(self._builder, result_ref, null_ptr)
 
-    def visit_register(self, register: Union[QuantumRegister, ClassicalRegister]) -> None:
+    def visit_register(
+        self, register: Union[QuantumRegister, ClassicalRegister]
+    ) -> None:
         """Visit a register and assign global bit indices to its bits."""
         logger.debug("Visiting register '%s'", register.name)
         if isinstance(register, QuantumRegister):
@@ -230,7 +236,9 @@ class BasicQiskitVisitor:
                 {bit: n + len(self._clbit_labels) for n, bit in enumerate(register)}
             )
         else:
-            raise QiskitConversionError(f"Register of type {type(register)} not supported.")
+            raise QiskitConversionError(
+                f"Register of type {type(register)} not supported."
+            )
 
     def _process_composite_instruction(
         self,
@@ -453,7 +461,9 @@ def convert(
         raise TypeError("Input quantum program must be of type qiskit.QuantumCircuit.")
 
     if len(circuit.data) == 0:
-        raise ValueError("Input quantum circuit must consist of at least one operation.")
+        raise ValueError(
+            "Input quantum circuit must consist of at least one operation."
+        )
 
     if transpile:
         circuit = qiskit_transpile(circuit, basis_gates=QISKIT_BASIS_GATES)

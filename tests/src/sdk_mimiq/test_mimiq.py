@@ -198,10 +198,7 @@ def test_from_mimiq_circuit():
         compression_format=QuantumProgramCompressionFormat.ZLIB_BASE64_V1,
     )
 
-    assert (
-        prog_uncomp.serialization_format
-        == QuantumProgramSerializationFormat.QASM_V2
-    )
+    assert prog_uncomp.serialization_format == QuantumProgramSerializationFormat.QASM_V2
 
     # The uncompressed QASM2 round-trips back to an equivalent MIMIQ circuit
     # and the program feeds the Qiskit consumer.

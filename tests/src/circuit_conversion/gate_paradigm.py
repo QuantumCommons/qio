@@ -327,9 +327,7 @@ def _expected_measure_keys(expected: ReferenceCircuit) -> Tuple[str, ...]:
 
 def _check_qiskit_circuit_info(result, expected: ReferenceCircuit) -> None:
     if expected.name and result.name != expected.name:
-        record_loss(
-            LOSS_CIRCUIT_NAME, detail=f"{expected.name!r} -> {result.name!r}"
-        )
+        record_loss(LOSS_CIRCUIT_NAME, detail=f"{expected.name!r} -> {result.name!r}")
     phase = float(result.global_phase)
     if abs(phase - expected.global_phase) > 1e-9:
         record_loss(LOSS_GLOBAL_PHASE, detail=f"{expected.global_phase} -> {phase}")
@@ -489,9 +487,7 @@ def _qir_num_qubits(source: str) -> Optional[int]:
     """
     import re
 
-    m = re.search(
-        r"@__quantum__rt__qubit_allocate_array\((?:i32|i64)\s*(\d+)", source
-    )
+    m = re.search(r"@__quantum__rt__qubit_allocate_array\((?:i32|i64)\s*(\d+)", source)
     if m:
         return int(m.group(1))
     indices = {int(x) for x in re.findall(r"inttoptr \(i64 (\d+) to ptr\)", source)}
@@ -550,7 +546,9 @@ def check_qasm_cudaq_documented(version: int) -> Callable:
     return _check
 
 
-def check_qasm_normalization_limitations(result, expected: Optional[ReferenceCircuit] = None) -> None:
+def check_qasm_normalization_limitations(
+    result, expected: Optional[ReferenceCircuit] = None
+) -> None:
     """Probes a QASM 3 intermediate for constructs outside the straight-line
     subset of the self-hosted qasm2 <-> qasm3 text normalization, recording each
     occurrence as a declared loss (see :data:`QASM_NORMALIZATION_LIMIT_LOSSES`).
@@ -575,7 +573,9 @@ def check_qasm_normalization_limitations(result, expected: Optional[ReferenceCir
     for category, pattern in markers:
         match = re.search(pattern, source)
         if match:
-            record_loss(category, detail=f"construct present in QASM3: {match.group(0)!r}")
+            record_loss(
+                category, detail=f"construct present in QASM3: {match.group(0)!r}"
+            )
 
 
 def check_cirq_light(result, expected: Optional[ReferenceCircuit] = None) -> None:
@@ -586,7 +586,9 @@ def check_cirq_light(result, expected: Optional[ReferenceCircuit] = None) -> Non
     circuit-level information losses still belong in the report."""
     import cirq
 
-    assert isinstance(result, cirq.Circuit), f"expected cirq.Circuit, got {type(result)}"
+    assert isinstance(
+        result, cirq.Circuit
+    ), f"expected cirq.Circuit, got {type(result)}"
     if expected is not None:
         assert len(result.all_qubits()) == expected.n_qubits, (
             len(result.all_qubits()),
@@ -1206,12 +1208,12 @@ class GateParadigm(Paradigm):
 
             return convert(circuit_str)
 
-        qasm2_write_checks = (check_program(Serialization.QASM_V2),) + self.content_checks(
-            Serialization.QASM_V2
-        )
-        qasm3_write_checks = (check_program(Serialization.QASM_V3),) + self.content_checks(
-            Serialization.QASM_V3
-        )
+        qasm2_write_checks = (
+            check_program(Serialization.QASM_V2),
+        ) + self.content_checks(Serialization.QASM_V2)
+        qasm3_write_checks = (
+            check_program(Serialization.QASM_V3),
+        ) + self.content_checks(Serialization.QASM_V3)
         register(
             "qiskit->qasm3->qasm2->qiskit",
             "qiskit",
@@ -1278,15 +1280,21 @@ class GateParadigm(Paradigm):
         ),
         (
             "to_qasm2_circuit on CIRQJSON",
-            lambda: _cirq_program(Serialization.CIRQ_CIRCUIT_JSON_V1).to_qasm2_circuit(),
+            lambda: _cirq_program(
+                Serialization.CIRQ_CIRCUIT_JSON_V1
+            ).to_qasm2_circuit(),
         ),
         (
             "to_qasm3_circuit on CIRQJSON",
-            lambda: _cirq_program(Serialization.CIRQ_CIRCUIT_JSON_V1).to_qasm3_circuit(),
+            lambda: _cirq_program(
+                Serialization.CIRQ_CIRCUIT_JSON_V1
+            ).to_qasm3_circuit(),
         ),
         (
             "to_mimiq_circuit on CIRQJSON",
-            lambda: _cirq_program(Serialization.CIRQ_CIRCUIT_JSON_V1).to_mimiq_circuit(),
+            lambda: _cirq_program(
+                Serialization.CIRQ_CIRCUIT_JSON_V1
+            ).to_mimiq_circuit(),
         ),
         (
             "to_cudaq_kernel on CIRQJSON",

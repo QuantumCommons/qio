@@ -106,9 +106,7 @@ def test_from_cirq_circuit_qir_v1():
         dest_format=QuantumProgramSerializationFormat.QIR_V1,
         compression_format=QuantumProgramCompressionFormat.NONE,
     )
-    assert (
-        program.serialization_format == QuantumProgramSerializationFormat.QIR_V1
-    )
+    assert program.serialization_format == QuantumProgramSerializationFormat.QIR_V1
     _assert_valid_qir(program.serialization, 2)
 
 
@@ -119,9 +117,7 @@ def test_from_qiskit_circuit_qir_v1_compressed():
         _qiskit_bell(),
         dest_format=QuantumProgramSerializationFormat.QIR_V1,
     )
-    assert (
-        program.serialization_format == QuantumProgramSerializationFormat.QIR_V1
-    )
+    assert program.serialization_format == QuantumProgramSerializationFormat.QIR_V1
     _assert_valid_qir(zlib_to_str(program.serialization), 2)
 
 

@@ -64,7 +64,9 @@ def check_pulser(result, expected: Optional[ReferenceCircuit] = None) -> None:
     """
     import pulser
 
-    assert isinstance(result, pulser.Sequence), f"expected pulser.Sequence, got {type(result)}"
+    assert isinstance(
+        result, pulser.Sequence
+    ), f"expected pulser.Sequence, got {type(result)}"
     if expected is None or expected.paradigm != PARADIGM_ANALOG:
         return
     spec = expected.analog
@@ -285,7 +287,9 @@ class AnalogParadigm(Paradigm):
     unsupported_conversions = (
         (
             "to_mimiq_circuit on PULSERJSON",
-            lambda: _pulser_program(Serialization.PULSER_SEQUENCE_JSON_V1).to_mimiq_circuit(),
+            lambda: _pulser_program(
+                Serialization.PULSER_SEQUENCE_JSON_V1
+            ).to_mimiq_circuit(),
         ),
         (
             "from_pulser_sequence -> QASM_V2",
@@ -295,7 +299,9 @@ class AnalogParadigm(Paradigm):
         ),
         (
             "to_cirq_circuit on PULSERJSON",
-            lambda: _pulser_program(Serialization.PULSER_SEQUENCE_JSON_V1).to_cirq_circuit(),
+            lambda: _pulser_program(
+                Serialization.PULSER_SEQUENCE_JSON_V1
+            ).to_cirq_circuit(),
         ),
         (
             "from_pulser_sequence on bare-variable pulse",

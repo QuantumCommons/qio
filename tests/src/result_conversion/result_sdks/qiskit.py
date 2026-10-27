@@ -46,11 +46,29 @@ def _qiskit_statevector(result: Any) -> Optional[Sequence[float]]:
 
 
 QISKIT_PROBES = (
-    Probe(LOSS_QISKIT_METADATA, "backend_name", lambda r: r.backend_name, lambda ref: ref.backend_name),
-    Probe(LOSS_QISKIT_METADATA, "backend_version", lambda r: r.backend_version, lambda ref: ref.backend_version),
+    Probe(
+        LOSS_QISKIT_METADATA,
+        "backend_name",
+        lambda r: r.backend_name,
+        lambda ref: ref.backend_name,
+    ),
+    Probe(
+        LOSS_QISKIT_METADATA,
+        "backend_version",
+        lambda r: r.backend_version,
+        lambda ref: ref.backend_version,
+    ),
     Probe(LOSS_QISKIT_METADATA, "job_id", lambda r: r.job_id, lambda ref: ref.job_id),
-    Probe(LOSS_QISKIT_METADATA, "qobj_id", lambda r: r.qobj_id, lambda ref: ref.qobj_id),
-    Probe(LOSS_QISKIT_METADATA, "date", lambda r: r.date, lambda ref: ref.date, normalize=_iso),
+    Probe(
+        LOSS_QISKIT_METADATA, "qobj_id", lambda r: r.qobj_id, lambda ref: ref.qobj_id
+    ),
+    Probe(
+        LOSS_QISKIT_METADATA,
+        "date",
+        lambda r: r.date,
+        lambda ref: ref.date,
+        normalize=_iso,
+    ),
     Probe(
         LOSS_QISKIT_STATEVECTOR,
         "statevector",
@@ -105,7 +123,9 @@ class QiskitSDK(ResultSDK):
                 counts=dict(reference.counts),
                 memory=memory,
                 statevector=(
-                    list(reference.statevector) if reference.statevector is not None else None
+                    list(reference.statevector)
+                    if reference.statevector is not None
+                    else None
                 ),
             ),
             header={
@@ -145,7 +165,11 @@ def _qiskit_counts(result, expected: ReferenceResult = None) -> Dict[str, int]:
     n_qubits = header.get("n_qubits")
     if n_qubits is None and raw:
         n_qubits = max(
-            (len(str(k)) for k in raw if not (isinstance(k, str) and k.startswith("0x"))),
+            (
+                len(str(k))
+                for k in raw
+                if not (isinstance(k, str) and k.startswith("0x"))
+            ),
             default=0,
         )
     n_qubits = int(n_qubits or 0)

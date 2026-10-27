@@ -57,7 +57,9 @@ class PulserSDK(ResultSDK):
     def check(self, result, expected: ReferenceResult = None) -> None:
         from pulser.backend import Results
 
-        assert isinstance(result, Results), f"expected pulser.backend.Results, got {type(result)}"
+        assert isinstance(
+            result, Results
+        ), f"expected pulser.backend.Results, got {type(result)}"
         if expected is not None:
             _assert_counts(dict(result.final_bitstrings), expected)
             assert tuple(result.atom_order) == tuple(

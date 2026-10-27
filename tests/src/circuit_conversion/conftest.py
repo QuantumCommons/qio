@@ -28,7 +28,9 @@ import circuit_testing as ct
 @pytest.hookimpl(trylast=True)
 def pytest_terminal_summary(terminalreporter, exitstatus, config) -> None:
     report = ct.loss_report()
-    terminalreporter.section("conversion information losses observed (declared & inherent)")
+    terminalreporter.section(
+        "conversion information losses observed (declared & inherent)"
+    )
     if not report:
         terminalreporter.write_line("  none")
         return
@@ -39,7 +41,9 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config) -> None:
         terminalreporter.write_line(f"    {axis:{width}s} | {status:19s} | {note}")
 
     if not report:
-        terminalreporter.write_line("  conversion information losses: none declared/observed")
+        terminalreporter.write_line(
+            "  conversion information losses: none declared/observed"
+        )
         return
 
     categories = sorted({category for edges in report.values() for category in edges})
@@ -48,13 +52,17 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config) -> None:
         terminalreporter.write_line(f"    - {category:28s}")
         terminalreporter.write_line(f"{ct.loss_description(category)}")
 
-    terminalreporter.write_line("\n  observations (edge | category | affected circuits):")
+    terminalreporter.write_line(
+        "\n  observations (edge | category | affected circuits):"
+    )
     for edge_id, categories_map in sorted(report.items()):
         first = True
         for category, entry in sorted(categories_map.items()):
             circuits = ", ".join(sorted(entry["circuits"]))
             if first:
-                terminalreporter.write_line(f"    {edge_id:35s} {category:28s} {circuits}")
+                terminalreporter.write_line(
+                    f"    {edge_id:35s} {category:28s} {circuits}"
+                )
                 first = False
             else:
                 terminalreporter.write_line(f"    {'':35s} {category:28s} {circuits}")

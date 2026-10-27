@@ -171,9 +171,7 @@ def convert(circuit_str: str) -> PyKernel:
                 else:
                     if (namel := name.lower()) in ["rx", "ry", "rz", "u3"]:
                         op = getattr(kernel, namel)
-                        args = [
-                            float(a) if isinstance(a, int) else a for a in args
-                        ]
+                        args = [float(a) if isinstance(a, int) else a for a in args]
                         op(*args, *qubit_refs)
                         continue
                     gate = get_gate(name, targs)

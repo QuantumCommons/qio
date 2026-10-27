@@ -90,9 +90,7 @@ class ReferenceResult:
     def __post_init__(self) -> None:
         total = sum(self.counts.values())
         if total != self.shots:
-            raise ValueError(
-                f"{self.name}: counts sum {total} != shots {self.shots}"
-            )
+            raise ValueError(f"{self.name}: counts sum {total} != shots {self.shots}")
         for bitstring in self.counts:
             if len(bitstring) != self.n_qubits:
                 raise ValueError(

@@ -90,7 +90,7 @@ def convert(circuit_str: str) -> str:
         m = _GATE_CALL_RE.match(statement)
         if m and m.group("name") in _GATE_RENAME:
             name = m.group("name")
-            statement = _GATE_RENAME[name] + statement[len(name):]
+            statement = _GATE_RENAME[name] + statement[len(name) :]
         body.append("%s;" % statement)
 
     if not header:

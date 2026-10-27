@@ -323,7 +323,9 @@ def record_loss(category: str, detail: Optional[str] = None) -> None:
     entry["observations"].add((_LOSS_CTX["circuit"], detail))
 
 
-def set_loss_context(edge: "Paradigm.ConversionEdge", circuit: ReferenceCircuit) -> None:
+def set_loss_context(
+    edge: "Paradigm.ConversionEdge", circuit: ReferenceCircuit
+) -> None:
     _LOSS_CTX["id"] = edge.id
     _LOSS_CTX["circuit"] = circuit.name
     _LOSS_CTX["known"] = frozenset(edge.known_losses)
@@ -485,7 +487,9 @@ class Paradigm(ABC):
         input_kind: str
         input_fn: Callable[[ReferenceCircuit], Any]
         steps: Tuple["Paradigm.Step", ...]
-        oracle: str = "unitary"  # "unitary" | "counts" | "structural" | <paradigm-specific>
+        oracle: str = (
+            "unitary"  # "unitary" | "counts" | "structural" | <paradigm-specific>
+        )
         known_losses: Tuple[str, ...] = ()  # inherent information losses of the path
         paradigm: str = "gate"  # programming paradigm the edge operates on
 
@@ -512,7 +516,9 @@ class Paradigm(ABC):
         return result
 
     @abstractmethod
-    def build_edges(self, compression: Compression) -> Tuple["Paradigm.ConversionEdge", ...]:
+    def build_edges(
+        self, compression: Compression
+    ) -> Tuple["Paradigm.ConversionEdge", ...]:
         """Builds this paradigm's conversion graph (SDK -> format -> SDK) for
         one compression. Intermediate content checks are performed for both
         ``NONE`` and ``ZLIB`` (the serialization is decompressed before
@@ -539,7 +545,9 @@ class Paradigm(ABC):
                 raise ValueError(f"unknown oracle: {oracle}")
             fn(current, circuit)
 
-    def run_path(self, edge: "Paradigm.ConversionEdge", circuit: ReferenceCircuit) -> Any:
+    def run_path(
+        self, edge: "Paradigm.ConversionEdge", circuit: ReferenceCircuit
+    ) -> Any:
         """Runs a full conversion path (input -> steps) and applies its oracle."""
         set_loss_context(edge, circuit)
         current = edge.input_fn(circuit)
@@ -550,7 +558,9 @@ class Paradigm(ABC):
         self.run_oracle(circuit.oracle or edge.oracle, current, circuit)
         return current
 
-    def circuit_runnable(self, circuit: ReferenceCircuit, edge: "Paradigm.ConversionEdge") -> bool:
+    def circuit_runnable(
+        self, circuit: ReferenceCircuit, edge: "Paradigm.ConversionEdge"
+    ) -> bool:
         """Whether the circuit runs on the edge: same paradigm (and the edge is
         not excluded by ``supported_edge_ids``) and - for "counts" edges - the
         circuit has known expected counts."""
@@ -644,5 +654,7 @@ CIRCUIT_FEATURE_COVERAGE = GENERIC_FEATURE_COVERAGE + tuple(
     row for _paradigm in PARADIGMS for row in _paradigm.feature_coverage
 )
 
-REFERENCE_CIRCUITS = tuple(circuit for _paradigm in PARADIGMS for circuit in _paradigm.circuits)
+REFERENCE_CIRCUITS = tuple(
+    circuit for _paradigm in PARADIGMS for circuit in _paradigm.circuits
+)
 REFERENCE_CIRCUIT_INDEX = {circuit.name: circuit for circuit in REFERENCE_CIRCUITS}

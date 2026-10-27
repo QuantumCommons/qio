@@ -86,9 +86,9 @@ def check_bscount(result, expected: ReferenceResult = None) -> None:
 def check_bsdistribution(result, expected: ReferenceResult = None) -> None:
     import perceval as pcvl
 
-    assert isinstance(result, pcvl.BSDistribution), (
-        f"expected BSDistribution, got {type(result)}"
-    )
+    assert isinstance(
+        result, pcvl.BSDistribution
+    ), f"expected BSDistribution, got {type(result)}"
     if expected is not None:
         probs = {_bitstring_of(state): float(prob) for state, prob in result.items()}
         expected_probs = {
@@ -128,7 +128,9 @@ class PercevalSDK(ResultSDK):
     def check(self, result, expected: ReferenceResult = None) -> None:
         import perceval as pcvl
 
-        assert isinstance(result, pcvl.BSSamples), f"expected BSSamples, got {type(result)}"
+        assert isinstance(
+            result, pcvl.BSSamples
+        ), f"expected BSSamples, got {type(result)}"
         if expected is not None:
             _assert_counts(_perceval_counts(result), expected)
 

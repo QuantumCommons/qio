@@ -75,7 +75,7 @@ def _simulate_probs(circuit, spec: PhotonicSpec) -> Dict[Any, float]:
     of the spec's.
 
     Uses Perceval's SLOS backend (exact interference simulation, no sampling
-    noise) with the herald post-selection: ``set_heralds`` + 
+    noise) with the herald post-selection: ``set_heralds`` +
     ``keep_heralds(False)`` drops the herald modes from the returned states, so
     the distribution is over the data modes only.
     """
@@ -140,12 +140,14 @@ def check_perceval(result, expected: Optional[ReferenceCircuit] = None) -> None:
     """
     import perceval as pcvl
 
-    assert isinstance(result, pcvl.Circuit), f"expected perceval Circuit, got {type(result)}"
+    assert isinstance(
+        result, pcvl.Circuit
+    ), f"expected perceval Circuit, got {type(result)}"
     if expected is not None:
         assert result.m == expected.n_modes, (result.m, expected.n_modes)
-        assert _encode(result) == _encode(expected.perceval()), (
-            "round-tripped perceval circuit differs from the reference"
-        )
+        assert _encode(result) == _encode(
+            expected.perceval()
+        ), "round-tripped perceval circuit differs from the reference"
 
 
 def check_perceval_json(result, expected: Optional[ReferenceCircuit] = None) -> None:
@@ -163,18 +165,27 @@ def check_perceval_json(result, expected: Optional[ReferenceCircuit] = None) -> 
     assert _encode(circuit) == source
 
 
-def check_perceval_experiment(result, expected: Optional[ReferenceCircuit] = None) -> None:
+def check_perceval_experiment(
+    result, expected: Optional[ReferenceCircuit] = None
+) -> None:
     import perceval as pcvl
 
-    assert isinstance(result, pcvl.Experiment), f"expected perceval Experiment, got {type(result)}"
+    assert isinstance(
+        result, pcvl.Experiment
+    ), f"expected perceval Experiment, got {type(result)}"
     if expected is not None:
-        assert result.circuit_size == expected.n_modes, (result.circuit_size, expected.n_modes)
-        assert _encode(result) == _encode(expected.perceval_experiment()), (
-            "round-tripped perceval experiment differs from the reference"
+        assert result.circuit_size == expected.n_modes, (
+            result.circuit_size,
+            expected.n_modes,
         )
+        assert _encode(result) == _encode(
+            expected.perceval_experiment()
+        ), "round-tripped perceval experiment differs from the reference"
 
 
-def check_perceval_experiment_json(result, expected: Optional[ReferenceCircuit] = None) -> None:
+def check_perceval_experiment_json(
+    result, expected: Optional[ReferenceCircuit] = None
+) -> None:
     import perceval as pcvl
 
     source = _resolve_serialization(result)
@@ -182,7 +193,10 @@ def check_perceval_experiment_json(result, expected: Optional[ReferenceCircuit] 
     experiment = _decode(source)
     assert isinstance(experiment, pcvl.Experiment), type(experiment)
     if expected is not None:
-        assert experiment.circuit_size == expected.n_modes, (experiment.circuit_size, expected.n_modes)
+        assert experiment.circuit_size == expected.n_modes, (
+            experiment.circuit_size,
+            expected.n_modes,
+        )
     assert _encode(experiment) == source
 
 
@@ -334,10 +348,14 @@ class PhotonicParadigm(Paradigm):
                             "compression_format": compression,
                         },
                         (check_program(Serialization.PERCEVAL_EXPERIMENT_JSON_V1),)
-                        + self.content_checks(Serialization.PERCEVAL_EXPERIMENT_JSON_V1),
+                        + self.content_checks(
+                            Serialization.PERCEVAL_EXPERIMENT_JSON_V1
+                        ),
                     ),
                     self.Step(
-                        QuantumProgram.to_perceval_experiment, {}, (check_perceval_experiment,)
+                        QuantumProgram.to_perceval_experiment,
+                        {},
+                        (check_perceval_experiment,),
                     ),
                 ),
                 oracle="photonic",
@@ -356,27 +374,39 @@ class PhotonicParadigm(Paradigm):
         ),
         (
             "to_qiskit_circuit on PERCEVALJSON",
-            lambda: _perceval_program(Serialization.PERCEVAL_CIRCUIT_JSON_V1).to_qiskit_circuit(),
+            lambda: _perceval_program(
+                Serialization.PERCEVAL_CIRCUIT_JSON_V1
+            ).to_qiskit_circuit(),
         ),
         (
             "to_cirq_circuit on PERCEVALJSON",
-            lambda: _perceval_program(Serialization.PERCEVAL_CIRCUIT_JSON_V1).to_cirq_circuit(),
+            lambda: _perceval_program(
+                Serialization.PERCEVAL_CIRCUIT_JSON_V1
+            ).to_cirq_circuit(),
         ),
         (
             "to_mimiq_circuit on PERCEVALJSON",
-            lambda: _perceval_program(Serialization.PERCEVAL_CIRCUIT_JSON_V1).to_mimiq_circuit(),
+            lambda: _perceval_program(
+                Serialization.PERCEVAL_CIRCUIT_JSON_V1
+            ).to_mimiq_circuit(),
         ),
         (
             "to_cudaq_kernel on PERCEVALJSON",
-            lambda: _perceval_program(Serialization.PERCEVAL_CIRCUIT_JSON_V1).to_cudaq_kernel(),
+            lambda: _perceval_program(
+                Serialization.PERCEVAL_CIRCUIT_JSON_V1
+            ).to_cudaq_kernel(),
         ),
         (
             "to_pulser_sequence on PERCEVALJSON",
-            lambda: _perceval_program(Serialization.PERCEVAL_CIRCUIT_JSON_V1).to_pulser_sequence(),
+            lambda: _perceval_program(
+                Serialization.PERCEVAL_CIRCUIT_JSON_V1
+            ).to_pulser_sequence(),
         ),
         (
             "to_qasm2_circuit on PERCEVALJSON",
-            lambda: _perceval_program(Serialization.PERCEVAL_CIRCUIT_JSON_V1).to_qasm2_circuit(),
+            lambda: _perceval_program(
+                Serialization.PERCEVAL_CIRCUIT_JSON_V1
+            ).to_qasm2_circuit(),
         ),
         (
             "from_perceval_experiment -> QASM_V2",
@@ -393,7 +423,9 @@ class PhotonicParadigm(Paradigm):
         ),
         (
             "to_perceval_experiment on PERCEVALJSON",
-            lambda: _perceval_program(Serialization.PERCEVAL_CIRCUIT_JSON_V1).to_perceval_experiment(),
+            lambda: _perceval_program(
+                Serialization.PERCEVAL_CIRCUIT_JSON_V1
+            ).to_perceval_experiment(),
         ),
         (
             "to_qiskit_circuit on PERCEVAL_EXPERIMENTJSON",

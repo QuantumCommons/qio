@@ -239,7 +239,9 @@ class QuantumProgramResult:
             return cls(
                 compression_format=compression_format,
                 serialization_format=QuantumProgramResultSerializationFormat.PERCEVAL_RESULT_JSON_V1,
-                serialization=apply_compression[compression_format](perceval_result_dict),
+                serialization=apply_compression[compression_format](
+                    perceval_result_dict
+                ),
             )
         except Exception as e:
             raise Exception("unsupported serialization:", compression_format, e)

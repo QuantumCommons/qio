@@ -24,7 +24,13 @@ from qio.core import (
 )
 
 from reference_results import ReferenceResult
-from result_testing import LOSS_CUDAQ_REGISTER, Probe, ResultSDK, _assert_counts, _run_probes
+from result_testing import (
+    LOSS_CUDAQ_REGISTER,
+    Probe,
+    ResultSDK,
+    _assert_counts,
+    _run_probes,
+)
 
 
 def _cudaq_register_names(result: Any) -> Optional[set]:
@@ -50,7 +56,12 @@ def _cudaq_register_names(result: Any) -> Optional[set]:
 
 
 CUDAQ_PROBES = (
-    Probe(LOSS_CUDAQ_REGISTER, "register", _cudaq_register_names, lambda ref: {ref.register_name}),
+    Probe(
+        LOSS_CUDAQ_REGISTER,
+        "register",
+        _cudaq_register_names,
+        lambda ref: {ref.register_name},
+    ),
 )
 
 
@@ -109,7 +120,9 @@ class CudaqSDK(ResultSDK):
     def check(self, result, expected: ReferenceResult = None) -> None:
         import cudaq
 
-        assert isinstance(result, cudaq.SampleResult), f"expected SampleResult, got {type(result)}"
+        assert isinstance(
+            result, cudaq.SampleResult
+        ), f"expected SampleResult, got {type(result)}"
         if expected is not None:
             _assert_counts(_parse_cudaq_serialize(result.serialize()), expected)
             _run_probes(self.probes, result, expected)

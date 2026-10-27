@@ -86,7 +86,9 @@ class CirqSDK(ResultSDK):
     def check(self, result, expected: ReferenceResult = None) -> None:
         import cirq
 
-        assert isinstance(result, cirq.Result), f"expected cirq.Result, got {type(result)}"
+        assert isinstance(
+            result, cirq.Result
+        ), f"expected cirq.Result, got {type(result)}"
         if expected is not None:
             _assert_counts(_cirq_counts(result), expected)
 

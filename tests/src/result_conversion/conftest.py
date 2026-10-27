@@ -27,7 +27,9 @@ import result_testing as rt
 @pytest.hookimpl(trylast=True)
 def pytest_terminal_summary(terminalreporter, exitstatus, config) -> None:
     report = rt.loss_report()
-    terminalreporter.section("result conversion information losses observed (declared & inherent)")
+    terminalreporter.section(
+        "result conversion information losses observed (declared & inherent)"
+    )
     if not report:
         terminalreporter.write_line("  none")
         return
@@ -38,13 +40,17 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config) -> None:
         terminalreporter.write_line(f"    - {category:28s}")
         terminalreporter.write_line(f"{rt.loss_description(category)}")
 
-    terminalreporter.write_line("\n  observations (edge | category | affected results):")
+    terminalreporter.write_line(
+        "\n  observations (edge | category | affected results):"
+    )
     for edge_id, categories_map in sorted(report.items()):
         first = True
         for category, entry in sorted(categories_map.items()):
             results = ", ".join(sorted(entry["results"]))
             if first:
-                terminalreporter.write_line(f"\n    {edge_id:65s} {category:28s} {results}")
+                terminalreporter.write_line(
+                    f"\n    {edge_id:65s} {category:28s} {results}"
+                )
                 first = False
             else:
                 terminalreporter.write_line(f"    {'':65s} {category:28s} {results}")

@@ -126,9 +126,12 @@ def map_cirq_op_to_pyqir_callable(
             op_name = gate.__class__.__name__
         elif isinstance(gate, cirq.ops.Pauli):
             op_name = gate.__class__.__name__[-1]  # X, Y or Z
-        elif isinstance(gate, (cirq.ops.XPowGate, cirq.ops.YPowGate, cirq.ops.ZPowGate)):
+        elif isinstance(
+            gate, (cirq.ops.XPowGate, cirq.ops.YPowGate, cirq.ops.ZPowGate)
+        ):
             if gate.exponent == 1 or (
-                isinstance(gate, cirq.ZPowGate) and gate.exponent in [0.25, -0.25, 0.5, -0.5]
+                isinstance(gate, cirq.ZPowGate)
+                and gate.exponent in [0.25, -0.25, 0.5, -0.5]
             ):
                 op_name = str(gate)  # X, Y, Z, S, T, S**-1, T**-1
             else:
@@ -174,7 +177,9 @@ class BasicCirqVisitor:
         logger.debug("Visiting Cirq module '%s' (%d)", module.name, module.num_qubits)
         self._module = module.module
         context = self._module.context
-        entry = pyqir.entry_point(self._module, module.name, module.num_qubits, module.num_clbits)
+        entry = pyqir.entry_point(
+            self._module, module.name, module.num_qubits, module.num_clbits
+        )
 
         self._entry_point = entry.name
         self._builder = Builder(context)
@@ -219,7 +224,9 @@ class BasicCirqVisitor:
         logger.debug("Visiting qids '%s'", str(qids))
         if not all(isinstance(x, cirq.Qid) for x in qids):
             raise TypeError("All elements in the list must be of type cirq.Qid.")
-        self._qubit_labels.update({bit: n + len(self._qubit_labels) for n, bit in enumerate(qids)})
+        self._qubit_labels.update(
+            {bit: n + len(self._qubit_labels) for n, bit in enumerate(qids)}
+        )
 
     def visit_operation(self, operation: cirq.Operation) -> None:
         """Visit and convert a single cirq operation to QIR."""
@@ -263,7 +270,9 @@ class BasicCirqVisitor:
                     *qubits,
                 )
             else:
-                pyqir_func = lambda: temp_pyqir_func(self._builder, *qubits)  # noqa: E731
+                pyqir_func = lambda: temp_pyqir_func(
+                    self._builder, *qubits
+                )  # noqa: E731
 
             def _branch(conds, pyqir_func):
                 if len(conds) == 0:
@@ -327,7 +336,9 @@ class QirTargetGateSet(cirq.TwoQubitCompilationTargetGateset):
         *,
         atol: float = 1e-8,
         allow_partial_czs: bool = False,
-        additional_gates: Sequence[Union[Type["cirq.Gate"], "cirq.Gate", "cirq.GateFamily"]] = (),
+        additional_gates: Sequence[
+            Union[Type["cirq.Gate"], "cirq.Gate", "cirq.GateFamily"]
+        ] = (),
         preserve_moment_structure: bool = True,
     ) -> None:
         super().__init__(
@@ -361,7 +372,11 @@ class QirTargetGateSet(cirq.TwoQubitCompilationTargetGateset):
             cirq.YPowGate,
             cirq.ZPowGate,
         )
-        self._supported_two_qubit_set = (cirq.CNotPowGate, cirq.CZPowGate, cirq.SwapPowGate)
+        self._supported_two_qubit_set = (
+            cirq.CNotPowGate,
+            cirq.CZPowGate,
+            cirq.SwapPowGate,
+        )
         self._supported_multi_qubit_set = cirq.CCXPowGate
 
     @property
@@ -472,7 +487,9 @@ class QirTargetGateSet(cirq.TwoQubitCompilationTargetGateset):
 def preprocess_circuit(circuit: cirq.Circuit) -> cirq.Circuit:
     """Preprocess a Cirq circuit so that every operation is supported by the QIR conversion."""
     gateset = QirTargetGateSet()
-    qubit_map = {qubit: cirq.LineQubit(i) for i, qubit in enumerate(circuit.all_qubits())}
+    qubit_map = {
+        qubit: cirq.LineQubit(i) for i, qubit in enumerate(circuit.all_qubits())
+    }
     line_qubit_circuit = circuit.transform_qubits(lambda q: qubit_map[q])
 
     # Circuits with conditional operations skip the full optimization and only
@@ -604,7 +621,9 @@ def convert(circuit: cirq.Circuit, name: Optional[str] = None, **kwargs) -> str:
         raise TypeError("Input quantum program must be of type cirq.Circuit.")
 
     if len(circuit) == 0:
-        raise ValueError("Input quantum circuit must consist of at least one operation.")
+        raise ValueError(
+            "Input quantum circuit must consist of at least one operation."
+        )
 
     if name is None:
         name = generate_module_id(circuit)
