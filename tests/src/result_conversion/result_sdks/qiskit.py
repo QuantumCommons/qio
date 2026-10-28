@@ -103,8 +103,11 @@ class QiskitSDK(ResultSDK):
     wrap = QuantumProgramResult.from_qiskit_result
     read = QuantumProgramResult.to_qiskit_result
     # The qiskit job metadata + statevector cannot cross the plain-JSON
-    # intermediate, so every edge *arriving* on a qiskit target declares them.
+    # intermediate, so every edge *arriving* on a qiskit target declares them
+    # (metadata crosses only the self path, hence self_exact_losses). statevector
+    # does not survive the intermediate JSON even on the self path.
     target_losses = (LOSS_QISKIT_METADATA, LOSS_QISKIT_STATEVECTOR)
+    self_exact_losses = (LOSS_QISKIT_METADATA,)
     probes = QISKIT_PROBES
 
     def build(self, reference: ReferenceResult):

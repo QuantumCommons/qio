@@ -115,8 +115,9 @@ _LOSS_DESCRIPTIONS = {
     LOSS_QISKIT_METADATA: LossDescription(
         expected="qiskit job metadata (backend_name/version, job_id, "
         "qobj_id, date)",
-        actual="dropped",
-        why="dict_to_qiskit forwards only {results, success, header, metadata}",
+        actual="dropped off the self path",
+        why="backend/job identifiers are not carried by every source SDK "
+        "into the JSON intermediate",
     ),
     LOSS_QISKIT_STATEVECTOR: LossDescription(
         expected="qiskit data.statevector",
@@ -306,6 +307,10 @@ class ResultSDK(ABC):
         None  # to_<sdk>_result classmethod (QuantumProgramResult -> object)
     )
     target_losses: Tuple[str, ...] = ()  # losses inherent when arriving on this SDK
+    # Losses that must be EXACT on this SDK's own self path (input is target):
+    # still declared on cross edges, but excluded from known_losses for the
+    # self edge, so any deviation there is a fatal undeclared loss.
+    self_exact_losses: Tuple[str, ...] = ()
     static_source_losses: Tuple[
         str, ...
     ] = ()  # losses inherent when departing from this SDK
@@ -557,6 +562,12 @@ def build_edges(compression: Compression) -> Tuple[ConversionEdge, ...]:
                 known = tuple(target.target_losses) + tuple(
                     input_sdk.static_source_losses
                 )
+                if input_sdk is target:
+                    # Self path: losses declared only for cross edges become
+                    # exact here (any deviation is a fatal undeclared loss).
+                    known = tuple(
+                        loss for loss in known if loss not in target.self_exact_losses
+                    )
                 edges.append(
                     ConversionEdge(
                         id=edge_id,
