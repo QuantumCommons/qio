@@ -27,6 +27,9 @@ import result_testing as rt
 @pytest.hookimpl(trylast=True)
 def pytest_terminal_summary(terminalreporter, exitstatus, config) -> None:
     report = rt.loss_report()
+    # Always dump when QIO_LOSS_REPORT_JSON is set, even for an empty run,
+    # so each paradigm writes its JSON and the generator can merge cleanly.
+    _dump_loss_report(report)
     terminalreporter.section(
         "result conversion information losses observed (declared & inherent)"
     )
@@ -54,6 +57,34 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config) -> None:
                 first = False
             else:
                 terminalreporter.write_line(f"    {'':65s} {category:28s} {results}")
-            for result, detail in sorted(entry["observations"]):
+            for result, detail, _o, _e, _f in sorted(
+                entry["observations"], key=_obs_key
+            ):
                 suffix = f' : "{detail}"' if detail else ""
                 terminalreporter.write_line(f"      - {result}{suffix}")
+
+
+def _obs_key(obs):
+    return tuple(str(x) for x in obs)
+
+
+def _dump_loss_report(report) -> None:
+    """Writes the session loss report to ``QIO_LOSS_REPORT_JSON`` when set."""
+    import json
+    import os
+
+    path = os.environ.get("QIO_LOSS_REPORT_JSON")
+    if not path:
+        return
+    payload = {
+        edge_id: {
+            category: {
+                "results": sorted(entry["results"]),
+                "observations": sorted(entry["observations"], key=_obs_key),
+            }
+            for category, entry in categories.items()
+        }
+        for edge_id, categories in report.items()
+    }
+    with open(path, "w") as fh:
+        json.dump(payload, fh, indent=2)

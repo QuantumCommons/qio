@@ -280,13 +280,13 @@ def check_operation_sequence(
                 f"rotation parameters differ beyond tolerance: "
                 f"{params_a} vs {params_b}"
             )
+            rounded_a = tuple(round(float(p), 10) for p in params_a)
+            rounded_b = tuple(round(float(p), 10) for p in params_b)
             record_loss(
                 LOSS_ROTATION_PRECISION,
-                detail=(
-                    f"{name_a} on {indices_a}: "
-                    f"{tuple(round(float(p), 10) for p in params_a)} -> "
-                    f"{tuple(round(float(p), 10) for p in params_b)}"
-                ),
+                detail=f"{name_a} on {indices_a}: {rounded_a} -> {rounded_b}",
+                observed=rounded_b,
+                expected=rounded_a,
             )
 
     measure_actual = sorted(op for op in actual if op[0] == "measure")
@@ -327,15 +327,28 @@ def _expected_measure_keys(expected: ReferenceCircuit) -> Tuple[str, ...]:
 
 def _check_qiskit_circuit_info(result, expected: ReferenceCircuit) -> None:
     if expected.name and result.name != expected.name:
-        record_loss(LOSS_CIRCUIT_NAME, detail=f"{expected.name!r} -> {result.name!r}")
+        record_loss(
+            LOSS_CIRCUIT_NAME,
+            detail=f"{expected.name!r} -> {result.name!r}",
+            observed=result.name,
+            expected=expected.name,
+        )
     phase = float(result.global_phase)
     if abs(phase - expected.global_phase) > 1e-9:
-        record_loss(LOSS_GLOBAL_PHASE, detail=f"{expected.global_phase} -> {phase}")
+        record_loss(
+            LOSS_GLOBAL_PHASE,
+            detail=f"{expected.global_phase} -> {phase}",
+            observed=phase,
+            expected=expected.global_phase,
+        )
     if expected.metadata:
         actual_meta = dict(result.metadata or {})
         if actual_meta != dict(expected.metadata):
             record_loss(
-                LOSS_CIRCUIT_METADATA, detail=f"{actual_meta} != {expected.metadata}"
+                LOSS_CIRCUIT_METADATA,
+                detail=f"{actual_meta} != {expected.metadata}",
+                observed=actual_meta,
+                expected=expected.metadata,
             )
     measured = expected.measurement_indices()
     if not measured:
@@ -348,6 +361,8 @@ def _check_qiskit_circuit_info(result, expected: ReferenceCircuit) -> None:
         record_loss(
             LOSS_MEASUREMENT_MAPPING,
             detail=f"qubit->clbit {expected_map} -> {mapping}",
+            observed=mapping,
+            expected=expected_map,
         )
 
 
@@ -359,6 +374,8 @@ def _check_cirq_circuit_info(result, expected: ReferenceCircuit) -> None:
             record_loss(
                 LOSS_QUBIT_TOPOLOGY,
                 detail=f"labels {expected_labels} -> {labels}",
+                observed=labels,
+                expected=expected_labels,
             )
     if not expected.has_measurements():
         return
@@ -368,6 +385,8 @@ def _check_cirq_circuit_info(result, expected: ReferenceCircuit) -> None:
         record_loss(
             LOSS_MEASUREMENT_MAPPING,
             detail=f"measurement keys {expected_keys} -> {keys}",
+            observed=keys,
+            expected=expected_keys,
         )
 
 

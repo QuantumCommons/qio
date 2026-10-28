@@ -87,46 +87,56 @@ LOSS_MIMIQ_METADATA = "mimiq_metadata"
 LOSS_MIMIQ_AMPLITUDES = "mimiq_amplitudes"
 LOSS_CUDAQ_REGISTER = "cudaq_register"
 
+@dataclass(frozen=True)
+class LossDescription:
+    """Expected vs actual of a loss category, with a short explanation."""
+
+    expected: str
+    actual: str
+    why: str
+
+
 _LOSS_DESCRIPTIONS = {
-    LOSS_MEASUREMENT_KEY: (
-        "measurement keys are SDK-specific (cirq 'm0'/'m1' per qubit, qiskit "
-        "'m', mimiq 'result'); the counts histogram is key-independent, so a "
-        "renamed key carries no information loss"
+    LOSS_MEASUREMENT_KEY: LossDescription(
+        expected="source measurement keys (e.g. cirq 'm0'/'m1')",
+        actual="target SDK keys (e.g. qiskit 'm', mimiq 'result')",
+        why="SDK convention; the counts histogram is key-independent",
     ),
-    LOSS_BIT_ORDER: (
-        "the bitstring order is SDK-specific (which qubit is the most "
-        "significant character); the bitstring multiset - and therefore the "
-        "counts histogram - is preserved exactly"
+    LOSS_BIT_ORDER: LossDescription(
+        expected="source bitstring order",
+        actual="target SDK character order",
+        why="SDK convention; the bitstring multiset is preserved exactly",
     ),
-    LOSS_CIRQ_PARAMS: (
-        "cirq.Result params cannot be stored: ResultDict._json_dict_() emits "
-        "a live cirq.ParamResolver, which plain-JSON (qio pipeline) cannot "
-        "serialize - params are therefore always None across every conversion"
+    LOSS_CIRQ_PARAMS: LossDescription(
+        expected="cirq.Result params",
+        actual="always None",
+        why="cirq.ParamResolver is not JSON-serializable by the qio pipeline",
     ),
-    LOSS_QISKIT_METADATA: (
-        "qiskit job metadata (backend_name/version, job_id, qobj_id, date) is "
-        "dropped by the qio converters: dict_to_qiskit only forwards "
-        "{results, success, header, metadata}; it survives only when a target "
-        "converter re-derives it (e.g. mimiq simulator -> backend_name)"
+    LOSS_QISKIT_METADATA: LossDescription(
+        expected="qiskit job metadata (backend_name/version, job_id, "
+        "qobj_id, date)",
+        actual="dropped",
+        why="dict_to_qiskit forwards only {results, success, header, metadata}",
     ),
-    LOSS_QISKIT_STATEVECTOR: (
-        "qiskit data.statevector is dropped by non-qiskit converters; it only "
-        "survives on the qiskit->qiskit path when it stays JSON-safe "
-        "(real-valued amplitudes)"
+    LOSS_QISKIT_STATEVECTOR: LossDescription(
+        expected="qiskit data.statevector",
+        actual="dropped off the self path",
+        why="numpy/complex is not JSON-safe",
     ),
-    LOSS_MIMIQ_METADATA: (
-        "MIMIQ QCSResults metadata (zstates, fidelities, avggateerrors, "
-        "timings) is not carried by mimiq_to_dict / dict_to_mimiq today"
+    LOSS_MIMIQ_METADATA: LossDescription(
+        expected="MIMIQ zstates/fidelities/avggateerrors/timings",
+        actual="dropped",
+        why="not carried by mimiq_to_dict / dict_to_mimiq today",
     ),
-    LOSS_MIMIQ_AMPLITUDES: (
-        "MIMIQ amplitudes (bitarray keys, complex values) are not JSON "
-        "serializable, hence not representable through the result JSON "
-        "intermediate; they can only be reconstructed in memory (e.g. qiskit "
-        "statevector -> mimiq amplitudes)"
+    LOSS_MIMIQ_AMPLITUDES: LossDescription(
+        expected="MIMIQ amplitudes",
+        actual="not representable through result JSON",
+        why="bitarray keys + complex values are not JSON-serializable",
     ),
-    LOSS_CUDAQ_REGISTER: (
-        "CUDA-Q measurement register name mapping (e.g. to the qiskit "
-        "experiment header name) is SDK-specific"
+    LOSS_CUDAQ_REGISTER: LossDescription(
+        expected="CUDA-Q register names",
+        actual="mapped to target SDK naming",
+        why="register name mapping is SDK-specific",
     ),
 }
 
@@ -134,9 +144,16 @@ _LOSS_REPORT: Dict[str, Dict[str, Dict[str, Any]]] = {}
 _LOSS_CTX = {"id": None, "result": None, "known": frozenset()}
 
 
-def record_loss(category: str, detail: Optional[str] = None) -> None:
+def record_loss(
+    category: str,
+    detail: Optional[str] = None,
+    observed: Optional[Any] = None,
+    expected: Optional[Any] = None,
+    field: Optional[str] = None,
+) -> None:
     """Records a declared information loss - optionally with a concrete
-    ``detail`` of what was observed - or fails an undeclared one."""
+    ``detail`` and structured ``observed``/``expected`` values - or fails an
+    undeclared one."""
     if category not in _LOSS_CTX["known"]:
         raise AssertionError(
             f"undeclared information loss {category!r} on edge "
@@ -147,7 +164,15 @@ def record_loss(category: str, detail: Optional[str] = None) -> None:
         category, {"results": set(), "observations": set()}
     )
     entry["results"].add(_LOSS_CTX["result"])
-    entry["observations"].add((_LOSS_CTX["result"], detail))
+    entry["observations"].add(
+        (
+            _LOSS_CTX["result"],
+            detail,
+            repr(observed) if observed is not None else None,
+            repr(expected) if expected is not None else None,
+            field,
+        )
+    )
 
 
 def set_loss_context(edge: "ConversionEdge", reference: ReferenceResult) -> None:
@@ -162,8 +187,11 @@ def loss_report() -> Dict[str, Dict[str, Dict[str, Any]]]:
 
 
 def loss_description(category: str) -> str:
-    """Human-readable explanation of a loss category (used by the report)."""
-    return _LOSS_DESCRIPTIONS.get(category, "")
+    """Human-readable summary of a loss category (used by the report)."""
+    desc = _LOSS_DESCRIPTIONS.get(category)
+    if desc is None:
+        return ""
+    return f"{desc.expected} -> {desc.actual}: {desc.why}"
 
 
 # Metadata probes
@@ -214,6 +242,9 @@ def _run_probes(
             record_loss(
                 probe.category,
                 detail=f"{probe.field}: {observed!r} != expected {expected_value!r}",
+                observed=observed,
+                expected=expected_value,
+                field=probe.field,
             )
 
 

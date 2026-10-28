@@ -76,6 +76,15 @@ cirq_result = client_result.to_cirq_result()
 qiskit_result = client_result.to_qiskit_result()
 ```
 
+## Conversion losses & unsupported features
+
+[`LOSS_REPORT.md`](LOSS_REPORT.md) details every conversion loss across all SDK
+edges (per edge: expected value, actual value, explanation), the unsupported
+conversions that must raise, feature coverage, and result conventions. It is
+generated from the conversion test batteries (`make -C tests report`, or
+`report-observed` to include per-run observed/expected values) and is
+auto-refreshed in CI on every merge to `main`.
+
 ## qio circuit conversion mapping
 
 Map of the SDKs integrated in `qio` and the conversion links between them
@@ -109,7 +118,8 @@ represented here).
   dropped on the QASM3→QASM2 leg, and other stdlib gates
   (`u2`/`u3`/`cu`/`cu2`/`cu3`) are not mapped. The circuit-conversion test
   battery surfaces these inherent limits as declared loss categories
-  (`qasm_control_flow`, `qasm_gphase`, `qasm_stdlib_gate`) in its loss report.
+  (`qasm_control_flow`, `qasm_gphase`, `qasm_stdlib_gate`) in its
+  [loss report](LOSS_REPORT.md).
 
 ```mermaid
 

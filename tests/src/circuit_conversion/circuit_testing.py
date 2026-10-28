@@ -173,82 +173,78 @@ def _info_and(*base: str) -> Tuple[str, ...]:
     return QASM_CIRCUIT_INFO_LOSSES + tuple(base)
 
 
+@dataclass(frozen=True)
+class LossDescription:
+    """Expected vs actual of a loss category, with a short explanation."""
+
+    expected: str
+    actual: str
+    why: str
+
+
 _LOSS_DESCRIPTIONS = {
-    LOSS_ROTATION_PRECISION: (
-        "rotation angles are serialized by Cirq's QASM export at ~10 significant "
-        "digits, so exact floats are unreachable after a Cirq-serialized round "
-        "trip; gate names, qubit indices and measurement structure still match"
+    LOSS_ROTATION_PRECISION: LossDescription(
+        expected="bit-exact rotation floats",
+        actual="angles truncated to ~10 significant digits",
+        why="Cirq's QASM export serializes rotation parameters with limited "
+        "precision",
     ),
-    LOSS_CUDAQ_GATE_DECOMPOSITION: (
-        "CUDA-Q re-emits OpenQASM 2 in a different gate basis (e.g. cz -> h+cx+h, "
-        "s/t -> rz/rx) and splits measurements into per-qubit classical "
-        "registers; the qubit count is preserved and the end-of-chain unitary is "
-        "checked by the unitary oracle, so this is a structural - not semantic - "
-        "rewrite"
+    LOSS_CUDAQ_GATE_DECOMPOSITION: LossDescription(
+        expected="same gate list",
+        actual="re-expressed in CUDA-Q's basis (cz -> h+cx+h, s/t -> rz/rx), "
+        "one register per qubit",
+        why="the end-of-chain unitary is checked instead of the operation chain",
     ),
-    LOSS_CIRCUIT_NAME: (
-        "the circuit name (ReferenceCircuit.name, carried by the Qiskit builder) "
-        "is not part of OpenQASM: every QASM round trip regenerates it (e.g. "
-        "'circuit-42'); Cirq circuits carry no name at all"
+    LOSS_CIRCUIT_NAME: LossDescription(
+        expected="reference circuit name",
+        actual="regenerated (e.g. 'circuit-42')",
+        why="OpenQASM carries no circuit name; Cirq has none",
     ),
-    LOSS_GLOBAL_PHASE: (
-        "Qiskit circuit.global_phase is not expressible in OpenQASM (no syntax in "
-        "QASM2, dropped by QASM3 export), so a non-zero phase is lost on any QASM "
-        "round trip; the unitary oracle intentionally ignores global phases, so "
-        "this is tracked here instead"
+    LOSS_GLOBAL_PHASE: LossDescription(
+        expected="exact global phase",
+        actual="lost",
+        why="not expressible in OpenQASM; the unitary oracle ignores phases",
     ),
-    LOSS_CIRCUIT_METADATA: (
-        "the Qiskit circuit.metadata dict is dropped by every intermediate format "
-        "(QASM/CirqJSON/CUDA-Q); only a natively-built Qiskit circuit carries it"
+    LOSS_CIRCUIT_METADATA: LossDescription(
+        expected="Qiskit circuit.metadata dict",
+        actual="dropped",
+        why="no intermediate format carries it",
     ),
-    LOSS_QUBIT_TOPOLOGY: (
-        "qubit topology (Cirq NamedQubit/GridQubit labels, register names) is "
-        "flattened to a linear q[i] array by OpenQASM exports; only the CirqJSON "
-        "intermediate preserves the named/grid labels, and only the Cirq SDK can "
-        "re-read them"
+    LOSS_QUBIT_TOPOLOGY: LossDescription(
+        expected="named/grid qubit labels & register names",
+        actual="flattened to linear q[i]",
+        why="OpenQASM flattens topology; only CirqJSON preserves it",
     ),
-    LOSS_MEASUREMENT_MAPPING: (
-        "the classical side of measurements is not preserved verbatim: the "
-        "qubit -> classical-bit assignment and the Cirq measurement keys can be "
-        "reordered or merged by QASM/CUDA-Q round trips (e.g. per-qubit keys m0/m1 "
-        "collapse to one merged register, or a cirq -> qasm -> qiskit path swaps "
-        "the clbit slots); the number of classical bits is a hard check"
+    LOSS_MEASUREMENT_MAPPING: LossDescription(
+        expected="exact qubit->clbit assignment / measurement keys",
+        actual="reordered or merged by QASM/CUDA-Q round trips",
+        why="the classical-bit count stays a hard check",
     ),
-    LOSS_SYMBOLIC_PARAMS: (
-        "unbound (symbolic) parameters survive OpenQASM 3 (input float) and "
-        "CirqJSON, but OpenQASM 2 cannot represent them (export raises) and the "
-        "cirq OpenQASM importer cannot parse them; the parametrized circuit is "
-        "therefore only exercised on the QASM3 and CirqJSON edges"
+    LOSS_SYMBOLIC_PARAMS: LossDescription(
+        expected="unbound (symbolic) parameters",
+        actual="unsupported on QASM2 (export raises / import fails)",
+        why="QASM2 cannot represent them; QASM3 and CirqJSON preserve them",
     ),
-    LOSS_ANALOG_DEVICE: (
-        "the Pulser abstract repr is device-independent, so in principle the "
-        "device object could be lost/rewritten by a 'from_abstract_repr' round "
-        "trip. With pulser 1.9.1 + the reference devices the device is "
-        "preserved exactly (device equality and channel objects are checked), "
-        "so this category is currently never recorded - it is a declared guard "
-        "that surfaces (tolerated, not failing) any future pulser/device "
-        "version that would drop the device from the serialization"
+    LOSS_ANALOG_DEVICE: LossDescription(
+        expected="exact Pulser device object",
+        actual="none (guard; never recorded today)",
+        why="abstract repr is device-independent; guards a future pulser "
+        "dropping the device",
     ),
-    LOSS_QASM_CONTROL_FLOW: (
-        "the cudaq_to_qasm3 / qasm3_to_mimiq converters ride the self-hosted "
-        "qasm2 <-> qasm3 text normalization, which handles straight-line gate "
-        "programs only: classical control flow (if/else, for/while/switch) and "
-        "gate-definition blocks / subroutines are not re-expressed between the "
-        "two grammars (e.g. QASM3 'if (c[0])' is not transcribed to the QASM2 "
-        "'if (c[0]==1)' form), and block statements shatter on the ';' split"
+    LOSS_QASM_CONTROL_FLOW: LossDescription(
+        expected="classical control flow preserved",
+        actual="not re-expressed (if/for/while/switch blocks)",
+        why="qasm2<->qasm3 normalization is straight-line only",
     ),
-    LOSS_QASM_GPHASE: (
-        "the QASM3 -> QASM2 leg silently drops global-phase statements "
-        "(gphase(...) with a '// dropped' comment): QASM2 has no "
-        "representation for them, so a non-zero global phase is lost on the "
-        "qasm3 -> mimiq path"
+    LOSS_QASM_GPHASE: LossDescription(
+        expected="gphase() kept",
+        actual="silently dropped (leaves '// dropped')",
+        why="QASM2 has no global-phase syntax (qasm3->mimiq path)",
     ),
-    LOSS_QASM_GATE_SET: (
-        "the qasm2 <-> qasm3 text normalization only renames u1/cu1 <-> p/cp; "
-        "it neither decomposes nor maps any other stdlib gate whose spelling "
-        "differs between the two grammars (u2/u3/cu3/cu, ...), so such gates "
-        "are passed through unmapped and may not exist in the target grammar's "
-        "include file"
+    LOSS_QASM_GATE_SET: LossDescription(
+        expected="stdlib gates re-expressed in the target grammar",
+        actual="passed through unmapped (may not exist in target include)",
+        why="normalization only renames u1/cu1 <-> p/cp",
     ),
 }
 
@@ -307,9 +303,16 @@ GENERIC_FEATURE_COVERAGE = (
 )
 
 
-def record_loss(category: str, detail: Optional[str] = None) -> None:
+def record_loss(
+    category: str,
+    detail: Optional[str] = None,
+    observed: Optional[Any] = None,
+    expected: Optional[Any] = None,
+    field: Optional[str] = None,
+) -> None:
     """Records a declared information loss - optionally with a concrete
-    ``detail`` of what was observed - or fails an undeclared one."""
+    ``detail`` and structured ``observed``/``expected`` values - or fails an
+    undeclared one."""
     if category not in _LOSS_CTX["known"]:
         raise AssertionError(
             f"undeclared information loss {category!r} on edge "
@@ -320,7 +323,15 @@ def record_loss(category: str, detail: Optional[str] = None) -> None:
         category, {"circuits": set(), "observations": set()}
     )
     entry["circuits"].add(_LOSS_CTX["circuit"])
-    entry["observations"].add((_LOSS_CTX["circuit"], detail))
+    entry["observations"].add(
+        (
+            _LOSS_CTX["circuit"],
+            detail,
+            repr(observed) if observed is not None else None,
+            repr(expected) if expected is not None else None,
+            field,
+        )
+    )
 
 
 def set_loss_context(
@@ -337,8 +348,11 @@ def loss_report() -> Dict[str, Dict[str, Dict[str, Any]]]:
 
 
 def loss_description(category: str) -> str:
-    """Human-readable explanation of a loss category (used by the report)."""
-    return _LOSS_DESCRIPTIONS.get(category, "")
+    """Human-readable summary of a loss category (used by the report)."""
+    desc = _LOSS_DESCRIPTIONS.get(category)
+    if desc is None:
+        return ""
+    return f"{desc.expected} -> {desc.actual}: {desc.why}"
 
 
 def _resolve_serialization(result) -> str:
