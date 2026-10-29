@@ -17,9 +17,13 @@ from cudaq import PyKernel
 from pyqir import Module, Context
 
 
-def convert(cudaq_kernel: PyKernel) -> Module:
+def convert(cudaq_kernel: PyKernel) -> str:
     llvm_ir = cudaq.translate(cudaq_kernel, format="qir")
     context = Context()
     module = Module.from_ir(context, llvm_ir, "main")
 
-    return module
+    error = module.verify()
+    if error is not None:
+        raise RuntimeError(error)
+
+    return llvm_ir

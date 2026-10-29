@@ -31,6 +31,7 @@ class QuantumProgramSerializationFormat(IntEnum):
     CIRQ_CIRCUIT_JSON_V1 = 5
     PERCEVAL_CIRCUIT_JSON_V1 = 6
     PULSER_SEQUENCE_JSON_V1 = 7
+    PERCEVAL_EXPERIMENT_JSON_V1 = 8
 
 
 class QuantumProgramCompressionFormat(IntEnum):
@@ -63,6 +64,210 @@ class QuantumProgram:
         return json.dumps(self.to_json_dict(), sort_keys=True, default=str)
 
     @classmethod
+    def from_pulser_sequence(
+        cls,
+        pulser_sequence: "pulser.Sequence",
+        dest_format: QuantumProgramSerializationFormat = QuantumProgramSerializationFormat.PULSER_SEQUENCE_JSON_V1,
+        compression_format: QuantumProgramCompressionFormat = QuantumProgramCompressionFormat.ZLIB_BASE64_V1,
+    ) -> "QuantumProgram":
+        from qio.utils.conversion.program.pulser_to_pulserjson import (
+            convert as pulser_to_pulserjson_convert,
+        )
+
+        dest_format = (
+            QuantumProgramSerializationFormat.PULSER_SEQUENCE_JSON_V1
+            if dest_format
+            == QuantumProgramSerializationFormat.UNKNOWN_SERIALIZATION_FORMAT
+            else dest_format
+        )
+        compression_format = (
+            QuantumProgramCompressionFormat.NONE
+            if compression_format
+            == QuantumProgramCompressionFormat.UNKNOWN_COMPRESSION_FORMAT
+            else compression_format
+        )
+
+        try:
+            apply_serialization = {
+                QuantumProgramSerializationFormat.PULSER_SEQUENCE_JSON_V1: pulser_to_pulserjson_convert,
+            }
+
+            serialization = apply_serialization[dest_format](pulser_sequence)
+
+            if compression_format == QuantumProgramCompressionFormat.ZLIB_BASE64_V1:
+                serialization = str_to_zlib(serialization)
+
+            return cls(
+                serialization_format=dest_format,
+                compression_format=compression_format,
+                serialization=serialization,
+            )
+        except Exception as e:
+            raise Exception(
+                "unsupport serialization:", dest_format, compression_format, e
+            )
+
+    def to_pulser_sequence(self) -> "pulser.Sequence":
+        from qio.utils.conversion.program.pulserjson_to_pulser import (
+            convert as pulserjson_to_pulser_convert,
+        )
+
+        serialization = self.serialization
+
+        try:
+            if (
+                self.compression_format
+                == QuantumProgramCompressionFormat.ZLIB_BASE64_V1
+            ):
+                serialization = zlib_to_str(serialization)
+
+            apply_unserialization = {
+                QuantumProgramSerializationFormat.PULSER_SEQUENCE_JSON_V1: pulserjson_to_pulser_convert,
+            }
+
+            return apply_unserialization[self.serialization_format](serialization)
+        except Exception as e:
+            raise Exception(
+                "unsupported unserialization:", self.serialization_format, e
+            )
+
+    @classmethod
+    def from_perceval_circuit(
+        cls,
+        perceval_circuit: "perceval.Circuit",
+        dest_format: QuantumProgramSerializationFormat = QuantumProgramSerializationFormat.PERCEVAL_CIRCUIT_JSON_V1,
+        compression_format: QuantumProgramCompressionFormat = QuantumProgramCompressionFormat.ZLIB_BASE64_V1,
+    ) -> "QuantumProgram":
+        from qio.utils.conversion.program.perceval_to_percevaljson import (
+            convert as perceval_to_percevaljson_convert,
+        )
+
+        dest_format = (
+            QuantumProgramSerializationFormat.PERCEVAL_CIRCUIT_JSON_V1
+            if dest_format
+            == QuantumProgramSerializationFormat.UNKNOWN_SERIALIZATION_FORMAT
+            else dest_format
+        )
+        compression_format = (
+            QuantumProgramCompressionFormat.NONE
+            if compression_format
+            == QuantumProgramCompressionFormat.UNKNOWN_COMPRESSION_FORMAT
+            else compression_format
+        )
+
+        try:
+            apply_serialization = {
+                QuantumProgramSerializationFormat.PERCEVAL_CIRCUIT_JSON_V1: perceval_to_percevaljson_convert,
+            }
+
+            serialization = apply_serialization[dest_format](perceval_circuit)
+
+            if compression_format == QuantumProgramCompressionFormat.ZLIB_BASE64_V1:
+                serialization = str_to_zlib(serialization)
+
+            return cls(
+                serialization_format=dest_format,
+                compression_format=compression_format,
+                serialization=serialization,
+            )
+        except Exception as e:
+            raise Exception(
+                "unsupport serialization:", dest_format, compression_format, e
+            )
+
+    def to_perceval_circuit(self) -> "perceval.Circuit":
+        from qio.utils.conversion.program.percevaljson_to_perceval import (
+            convert as percevaljson_to_perceval_convert,
+        )
+
+        serialization = self.serialization
+
+        try:
+            if (
+                self.compression_format
+                == QuantumProgramCompressionFormat.ZLIB_BASE64_V1
+            ):
+                serialization = zlib_to_str(serialization)
+
+            apply_unserialization = {
+                QuantumProgramSerializationFormat.PERCEVAL_CIRCUIT_JSON_V1: percevaljson_to_perceval_convert,
+            }
+
+            return apply_unserialization[self.serialization_format](serialization)
+        except Exception as e:
+            raise Exception(
+                "unsupported unserialization:", self.serialization_format, e
+            )
+
+    @classmethod
+    def from_perceval_experiment(
+        cls,
+        perceval_experiment: "perceval.Experiment",
+        dest_format: QuantumProgramSerializationFormat = QuantumProgramSerializationFormat.PERCEVAL_EXPERIMENT_JSON_V1,
+        compression_format: QuantumProgramCompressionFormat = QuantumProgramCompressionFormat.ZLIB_BASE64_V1,
+    ) -> "QuantumProgram":
+        from qio.utils.conversion.program.perceval_to_percevaljson import (
+            convert as perceval_to_percevaljson_convert,
+        )
+
+        dest_format = (
+            QuantumProgramSerializationFormat.PERCEVAL_EXPERIMENT_JSON_V1
+            if dest_format
+            == QuantumProgramSerializationFormat.UNKNOWN_SERIALIZATION_FORMAT
+            else dest_format
+        )
+        compression_format = (
+            QuantumProgramCompressionFormat.NONE
+            if compression_format
+            == QuantumProgramCompressionFormat.UNKNOWN_COMPRESSION_FORMAT
+            else compression_format
+        )
+
+        try:
+            apply_serialization = {
+                QuantumProgramSerializationFormat.PERCEVAL_EXPERIMENT_JSON_V1: perceval_to_percevaljson_convert,
+            }
+
+            serialization = apply_serialization[dest_format](perceval_experiment)
+
+            if compression_format == QuantumProgramCompressionFormat.ZLIB_BASE64_V1:
+                serialization = str_to_zlib(serialization)
+
+            return cls(
+                serialization_format=dest_format,
+                compression_format=compression_format,
+                serialization=serialization,
+            )
+        except Exception as e:
+            raise Exception(
+                "unsupport serialization:", dest_format, compression_format, e
+            )
+
+    def to_perceval_experiment(self) -> "perceval.Experiment":
+        from qio.utils.conversion.program.percevaljson_to_perceval import (
+            convert as percevaljson_to_perceval_convert,
+        )
+
+        serialization = self.serialization
+
+        try:
+            if (
+                self.compression_format
+                == QuantumProgramCompressionFormat.ZLIB_BASE64_V1
+            ):
+                serialization = zlib_to_str(serialization)
+
+            apply_unserialization = {
+                QuantumProgramSerializationFormat.PERCEVAL_EXPERIMENT_JSON_V1: percevaljson_to_perceval_convert,
+            }
+
+            return apply_unserialization[self.serialization_format](serialization)
+        except Exception as e:
+            raise Exception(
+                "unsupported unserialization:", self.serialization_format, e
+            )
+
+    @classmethod
     def from_qiskit_circuit(
         cls,
         qiskit_circuit: "qiskit.QuantumCircuit",
@@ -74,6 +279,9 @@ class QuantumProgram:
         )
         from qio.utils.conversion.program.qiskit_to_qasm3 import (
             convert as qiskit_to_qasm3_convert,
+        )
+        from qio.utils.conversion.program.qiskit_to_qir import (
+            convert as qiskit_to_qir_convert,
         )
 
         dest_format = (
@@ -93,6 +301,7 @@ class QuantumProgram:
             apply_serialization = {
                 QuantumProgramSerializationFormat.QASM_V2: qiskit_to_qasm2_convert,
                 QuantumProgramSerializationFormat.QASM_V3: qiskit_to_qasm3_convert,
+                QuantumProgramSerializationFormat.QIR_V1: qiskit_to_qir_convert,
             }
 
             serialization = apply_serialization[dest_format](qiskit_circuit)
@@ -143,6 +352,9 @@ class QuantumProgram:
         from qio.utils.conversion.program.qasm2_to_mimiq import (
             convert as qasm2_to_mimiq_convert,
         )
+        from qio.utils.conversion.program.qasm3_to_mimiq import (
+            convert as qasm3_to_mimiq_convert,
+        )
 
         serialization = self.serialization
 
@@ -152,6 +364,7 @@ class QuantumProgram:
         try:
             apply_unserialization = {
                 QuantumProgramSerializationFormat.QASM_V2: qasm2_to_mimiq_convert,
+                QuantumProgramSerializationFormat.QASM_V3: qasm3_to_mimiq_convert,
             }
 
             return apply_unserialization[self.serialization_format](serialization)
@@ -160,17 +373,99 @@ class QuantumProgram:
                 "unsupported unserialization:", self.serialization_format, e
             )
 
+    @classmethod
+    def from_mimiq_circuit(
+        cls,
+        mimiq_circuit: "mimiqcircuits.Circuit",
+        dest_format: QuantumProgramSerializationFormat = QuantumProgramSerializationFormat.QASM_V2,
+        compression_format: QuantumProgramCompressionFormat = QuantumProgramCompressionFormat.ZLIB_BASE64_V1,
+    ) -> "QuantumProgram":
+        from qio.utils.conversion.program.mimiq_to_qasm2 import (
+            convert as mimiq_to_qasm2_convert,
+        )
+
+        dest_format = (
+            QuantumProgramSerializationFormat.QASM_V2
+            if dest_format
+            == QuantumProgramSerializationFormat.UNKNOWN_SERIALIZATION_FORMAT
+            else dest_format
+        )
+        compression_format = (
+            QuantumProgramCompressionFormat.NONE
+            if compression_format
+            == QuantumProgramCompressionFormat.UNKNOWN_COMPRESSION_FORMAT
+            else compression_format
+        )
+
+        try:
+            apply_serialization = {
+                QuantumProgramSerializationFormat.QASM_V2: mimiq_to_qasm2_convert,
+            }
+
+            serialization = apply_serialization[dest_format](mimiq_circuit)
+
+            if compression_format == QuantumProgramCompressionFormat.ZLIB_BASE64_V1:
+                serialization = str_to_zlib(serialization)
+
+            return cls(
+                serialization_format=dest_format,
+                compression_format=compression_format,
+                serialization=serialization,
+            )
+        except Exception as e:
+            raise Exception("unsupported serialization:", dest_format, e)
+
     def to_qasm2_circuit(self) -> str:
+        from qio.utils.conversion.program.qasm3_to_qasm2 import (
+            convert as qasm3_to_qasm2_convert,
+        )
 
         serialization = self.serialization
 
-        if self.compression_format == QuantumProgramCompressionFormat.ZLIB_BASE64_V1:
-            serialization = zlib_to_str(serialization)
+        try:
+            if (
+                self.compression_format
+                == QuantumProgramCompressionFormat.ZLIB_BASE64_V1
+            ):
+                serialization = zlib_to_str(serialization)
 
-        if self.serialization_format != QuantumProgramSerializationFormat.QASM_V2:
-            raise Exception("unsupported unserialization:", self.serialization_format)
+            apply_serialization = {
+                QuantumProgramSerializationFormat.QASM_V2: (lambda s: s),
+                QuantumProgramSerializationFormat.QASM_V3: qasm3_to_qasm2_convert,
+            }
 
-        return serialization
+            return apply_serialization[self.serialization_format](serialization)
+
+        except Exception as e:
+            raise Exception(
+                "unsupported unserialization:", self.serialization_format, e
+            )
+
+    def to_qasm3_circuit(self) -> str:
+        from qio.utils.conversion.program.qasm2_to_qasm3 import (
+            convert as qasm2_to_qasm3_convert,
+        )
+
+        serialization = self.serialization
+
+        try:
+            if (
+                self.compression_format
+                == QuantumProgramCompressionFormat.ZLIB_BASE64_V1
+            ):
+                serialization = zlib_to_str(serialization)
+
+            apply_serialization = {
+                QuantumProgramSerializationFormat.QASM_V2: qasm2_to_qasm3_convert,
+                QuantumProgramSerializationFormat.QASM_V3: (lambda s: s),
+            }
+
+            return apply_serialization[self.serialization_format](serialization)
+
+        except Exception as e:
+            raise Exception(
+                "unsupported unserialization:", self.serialization_format, e
+            )
 
     @classmethod
     def from_cirq_circuit(
@@ -187,6 +482,9 @@ class QuantumProgram:
         )
         from qio.utils.conversion.program.cirq_to_qasm3 import (
             convert as cirq_to_qasm3_convert,
+        )
+        from qio.utils.conversion.program.cirq_to_qir import (
+            convert as cirq_to_qir_convert,
         )
 
         dest_format = (
@@ -207,6 +505,7 @@ class QuantumProgram:
                 QuantumProgramSerializationFormat.QASM_V2: cirq_to_qasm2_convert,
                 QuantumProgramSerializationFormat.QASM_V3: cirq_to_qasm3_convert,
                 QuantumProgramSerializationFormat.CIRQ_CIRCUIT_JSON_V1: cirq_to_cirqjson_convert,
+                QuantumProgramSerializationFormat.QIR_V1: cirq_to_qir_convert,
             }
 
             serialization = apply_serialization[dest_format](cirq_circuit)
@@ -269,6 +568,12 @@ class QuantumProgram:
         from qio.utils.conversion.program.cudaq_to_qasm2 import (
             convert as cudaq_to_qasm2_convert,
         )
+        from qio.utils.conversion.program.cudaq_to_qasm3 import (
+            convert as cudaq_to_qasm3_convert,
+        )
+        from qio.utils.conversion.program.cudaq_to_qir import (
+            convert as cudaq_to_qir_convert,
+        )
 
         dest_format = (
             QuantumProgramSerializationFormat.QASM_V2
@@ -286,6 +591,8 @@ class QuantumProgram:
         try:
             apply_serialization = {
                 QuantumProgramSerializationFormat.QASM_V2: cudaq_to_qasm2_convert,
+                QuantumProgramSerializationFormat.QASM_V3: cudaq_to_qasm3_convert,
+                QuantumProgramSerializationFormat.QIR_V1: cudaq_to_qir_convert,
             }
 
             serialization = apply_serialization[dest_format](cudaq_kernel)
@@ -308,6 +615,9 @@ class QuantumProgram:
         from qio.utils.conversion.program.qasm3_to_cudaq import (
             convert as qasm3_to_cudaq_convert,
         )
+        from qio.utils.conversion.program.qir_to_cudaq import (
+            convert as qir_to_cudaq_convert,
+        )
 
         serialization = self.serialization
 
@@ -321,6 +631,7 @@ class QuantumProgram:
             apply_unserialization = {
                 QuantumProgramSerializationFormat.QASM_V2: qasm2_to_cudaq_convert,
                 QuantumProgramSerializationFormat.QASM_V3: qasm3_to_cudaq_convert,
+                QuantumProgramSerializationFormat.QIR_V1: qir_to_cudaq_convert,
             }
 
             return apply_unserialization[self.serialization_format](serialization)

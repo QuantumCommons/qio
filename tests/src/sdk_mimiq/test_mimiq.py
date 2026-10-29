@@ -18,6 +18,10 @@
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # ... (insérer la licence) ...
+import pytest
+
+pytestmark = pytest.mark.gate
+
 import os
 import tempfile
 
@@ -162,6 +166,84 @@ def test_circuit_conversion_loop_to_qasm2():
     assert original_qc.num_clbits == recovered_qc_uncomp.num_clbits
     assert original_qc.num_qubits == recovered_qc_comp.num_qubits
     assert original_qc.num_clbits == recovered_qc_comp.num_clbits
+
+
+def test_from_mimiq_circuit():
+    """
+    Test the MIMIQ ingestion edge: a MIMIQ circuit is serialized to QASM2
+    (from_mimiq_circuit) and the result round-trips back to the SDKs.
+    """
+    from mimiqcircuits.qasm import loads as mimiq_loads
+
+    from qio.utils.conversion.program.qasm2_to_mimiq import (
+        convert as qasm2_to_mimiq,
+    )
+
+    qasm2_str = """OPENQASM 2.0;
+    include "qelib1.inc";
+    qreg q[2];
+    creg c[2];
+    h q[0];
+    cx q[0], q[1];
+    measure q[0] -> c[0];
+    measure q[1] -> c[1];
+    """
+
+    mimiq_circuit = mimiq_loads(qasm2_str)
+
+    prog_uncomp = QuantumProgram.from_mimiq_circuit(
+        mimiq_circuit,
+        dest_format=QuantumProgramSerializationFormat.QASM_V2,
+        compression_format=QuantumProgramCompressionFormat.NONE,
+    )
+    prog_comp = QuantumProgram.from_mimiq_circuit(
+        mimiq_circuit,
+        dest_format=QuantumProgramSerializationFormat.QASM_V2,
+        compression_format=QuantumProgramCompressionFormat.ZLIB_BASE64_V1,
+    )
+
+    assert prog_uncomp.serialization_format == QuantumProgramSerializationFormat.QASM_V2
+
+    # The uncompressed QASM2 round-trips back to an equivalent MIMIQ circuit
+    # and the program feeds the Qiskit consumer.
+    qasm2_uncomp = prog_uncomp.to_qasm2_circuit()
+    qasm2_comp = prog_comp.to_qasm2_circuit()
+    assert isinstance(qasm2_uncomp, str)
+    assert qasm2_uncomp == qasm2_comp
+
+    recovered_mimiq = qasm2_to_mimiq(qasm2_uncomp)
+    assert recovered_mimiq is not None
+    assert recovered_mimiq.num_qubits() == 2
+
+    recovered_qiskit = prog_uncomp.to_qiskit_circuit()
+    assert recovered_qiskit.num_qubits == 2
+    assert recovered_qiskit.num_clbits == 2
+
+    # from_mimiq_circuit -> to_mimiq_circuit round trip preserves the qubits.
+    round_tripped = prog_uncomp.to_mimiq_circuit()
+    assert round_tripped.num_qubits() == 2
+
+
+def test_to_mimiq_circuit_reads_qasm3():
+    qasm3_str = """OPENQASM 3.0;
+    include "stdgates.inc";
+    qubit[2] q;
+    bit[2] c;
+    h q[0];
+    cx q[0], q[1];
+    c[0] = measure q[0];
+    c[1] = measure q[1];
+    """
+
+    program = QuantumProgram(
+        serialization_format=QuantumProgramSerializationFormat.QASM_V3,
+        compression_format=QuantumProgramCompressionFormat.NONE,
+        serialization=qasm3_str,
+    )
+
+    mimiq_circuit = program.to_mimiq_circuit()
+    assert mimiq_circuit is not None
+    assert mimiq_circuit.num_qubits() == 2
 
 
 def test_mimiq_result_conversion_integrity():

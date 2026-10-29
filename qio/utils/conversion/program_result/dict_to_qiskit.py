@@ -58,6 +58,12 @@ def convert(result_dict: dict, **kwargs) -> Result:
         "success": result_dict["success"],
         "header": result_dict.get("header"),
         "metadata": result_dict.get("metadata"),
+        "backend_name": result_dict.get("backend_name"),
+        "backend_version": result_dict.get("backend_version"),
+        "qobj_id": result_dict.get("qobj_id"),
+        "job_id": result_dict.get("job_id"),
+        "date": result_dict.get("date"),
+        "status": result_dict.get("status"),
     }
 
     if kwargs:

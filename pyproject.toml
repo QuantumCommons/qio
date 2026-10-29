@@ -25,5 +25,12 @@ dependencies = [
 
 [tool.setuptools_scm]
 
+[tool.pytest.ini_options]
+markers = [
+    "gate: gate-based qubit circuit conversions (cirq/qiskit/cudaq/mimiq/QIR/Aer)",
+    "analog: analog pulse-schedule conversions (pulser)",
+    "photonic: mode-based photonic circuit/result conversions",
+]
+
 [project.urls]
 Repository = "https://github.com/QuantumCommons/qio"
