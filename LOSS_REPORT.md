@@ -8,153 +8,153 @@ Each row = one conversion edge × one declared information loss. A loss not decl
 
 ### gate paradigm
 
-| Edge | Loss | Expected | Actual | Explanation |
-|---|---|---|---|---|
-| `cirq->qasm2->cirq` | `circuit_metadata` | Qiskit circuit.metadata dict | dropped | no intermediate format carries it |
-| `cirq->qasm2->cirq` | `circuit_name` | reference circuit name | regenerated (e.g. 'circuit-42') | OpenQASM carries no circuit name; Cirq has none |
-| `cirq->qasm2->cirq` | `global_phase` | exact global phase | lost | not expressible in OpenQASM; the unitary oracle ignores phases |
-| `cirq->qasm2->cirq` | `measurement_mapping` | exact qubit->clbit assignment / measurement keys | reordered or merged by QASM/CUDA-Q round trips | the classical-bit count stays a hard check |
-| `cirq->qasm2->cirq` | `qubit_topology` | named/grid qubit labels & register names | flattened to linear q[i] | OpenQASM flattens topology; only CirqJSON preserves it |
-| `cirq->qasm2->cirq` | `rotation_precision` | bit-exact rotation floats | angles truncated to ~10 significant digits | Cirq's QASM export serializes rotation parameters with limited precision |
-| `cirq->qasm2->cudaq->qasm2->cirq` | `circuit_metadata` | Qiskit circuit.metadata dict | dropped | no intermediate format carries it |
-| `cirq->qasm2->cudaq->qasm2->cirq` | `circuit_name` | reference circuit name | regenerated (e.g. 'circuit-42') | OpenQASM carries no circuit name; Cirq has none |
-| `cirq->qasm2->cudaq->qasm2->cirq` | `cudaq_gate_decomposition` | same gate list | re-expressed in CUDA-Q's basis (cz -> h+cx+h, s/t -> rz/rx), one register per qubit | the end-of-chain unitary is checked instead of the operation chain |
-| `cirq->qasm2->cudaq->qasm2->cirq` | `global_phase` | exact global phase | lost | not expressible in OpenQASM; the unitary oracle ignores phases |
-| `cirq->qasm2->cudaq->qasm2->cirq` | `measurement_mapping` | exact qubit->clbit assignment / measurement keys | reordered or merged by QASM/CUDA-Q round trips | the classical-bit count stays a hard check |
-| `cirq->qasm2->cudaq->qasm2->cirq` | `qubit_topology` | named/grid qubit labels & register names | flattened to linear q[i] | OpenQASM flattens topology; only CirqJSON preserves it |
-| `cirq->qasm2->cudaq->qasm2->cirq` | `rotation_precision` | bit-exact rotation floats | angles truncated to ~10 significant digits | Cirq's QASM export serializes rotation parameters with limited precision |
-| `cirq->qasm2->cudaq->qasm2->qiskit` | `circuit_metadata` | Qiskit circuit.metadata dict | dropped | no intermediate format carries it |
-| `cirq->qasm2->cudaq->qasm2->qiskit` | `circuit_name` | reference circuit name | regenerated (e.g. 'circuit-42') | OpenQASM carries no circuit name; Cirq has none |
-| `cirq->qasm2->cudaq->qasm2->qiskit` | `cudaq_gate_decomposition` | same gate list | re-expressed in CUDA-Q's basis (cz -> h+cx+h, s/t -> rz/rx), one register per qubit | the end-of-chain unitary is checked instead of the operation chain |
-| `cirq->qasm2->cudaq->qasm2->qiskit` | `global_phase` | exact global phase | lost | not expressible in OpenQASM; the unitary oracle ignores phases |
-| `cirq->qasm2->cudaq->qasm2->qiskit` | `measurement_mapping` | exact qubit->clbit assignment / measurement keys | reordered or merged by QASM/CUDA-Q round trips | the classical-bit count stays a hard check |
-| `cirq->qasm2->cudaq->qasm2->qiskit` | `qubit_topology` | named/grid qubit labels & register names | flattened to linear q[i] | OpenQASM flattens topology; only CirqJSON preserves it |
-| `cirq->qasm2->cudaq->qasm2->qiskit` | `rotation_precision` | bit-exact rotation floats | angles truncated to ~10 significant digits | Cirq's QASM export serializes rotation parameters with limited precision |
-| `cirq->qasm2->mimiq` | `rotation_precision` | bit-exact rotation floats | angles truncated to ~10 significant digits | Cirq's QASM export serializes rotation parameters with limited precision |
-| `cirq->qasm2->qiskit` | `circuit_metadata` | Qiskit circuit.metadata dict | dropped | no intermediate format carries it |
-| `cirq->qasm2->qiskit` | `circuit_name` | reference circuit name | regenerated (e.g. 'circuit-42') | OpenQASM carries no circuit name; Cirq has none |
-| `cirq->qasm2->qiskit` | `global_phase` | exact global phase | lost | not expressible in OpenQASM; the unitary oracle ignores phases |
-| `cirq->qasm2->qiskit` | `measurement_mapping` | exact qubit->clbit assignment / measurement keys | reordered or merged by QASM/CUDA-Q round trips | the classical-bit count stays a hard check |
-| `cirq->qasm2->qiskit` | `qubit_topology` | named/grid qubit labels & register names | flattened to linear q[i] | OpenQASM flattens topology; only CirqJSON preserves it |
-| `cirq->qasm2->qiskit` | `rotation_precision` | bit-exact rotation floats | angles truncated to ~10 significant digits | Cirq's QASM export serializes rotation parameters with limited precision |
-| `cirq->qasm3->cirq` | `circuit_metadata` | Qiskit circuit.metadata dict | dropped | no intermediate format carries it |
-| `cirq->qasm3->cirq` | `circuit_name` | reference circuit name | regenerated (e.g. 'circuit-42') | OpenQASM carries no circuit name; Cirq has none |
-| `cirq->qasm3->cirq` | `global_phase` | exact global phase | lost | not expressible in OpenQASM; the unitary oracle ignores phases |
-| `cirq->qasm3->cirq` | `measurement_mapping` | exact qubit->clbit assignment / measurement keys | reordered or merged by QASM/CUDA-Q round trips | the classical-bit count stays a hard check |
-| `cirq->qasm3->cirq` | `qubit_topology` | named/grid qubit labels & register names | flattened to linear q[i] | OpenQASM flattens topology; only CirqJSON preserves it |
-| `cirq->qasm3->cirq` | `rotation_precision` | bit-exact rotation floats | angles truncated to ~10 significant digits | Cirq's QASM export serializes rotation parameters with limited precision |
-| `cirq->qasm3->cudaq` | `rotation_precision` | bit-exact rotation floats | angles truncated to ~10 significant digits | Cirq's QASM export serializes rotation parameters with limited precision |
-| `cirq->qasm3->cudaq->qasm2->cirq` | `circuit_metadata` | Qiskit circuit.metadata dict | dropped | no intermediate format carries it |
-| `cirq->qasm3->cudaq->qasm2->cirq` | `circuit_name` | reference circuit name | regenerated (e.g. 'circuit-42') | OpenQASM carries no circuit name; Cirq has none |
-| `cirq->qasm3->cudaq->qasm2->cirq` | `cudaq_gate_decomposition` | same gate list | re-expressed in CUDA-Q's basis (cz -> h+cx+h, s/t -> rz/rx), one register per qubit | the end-of-chain unitary is checked instead of the operation chain |
-| `cirq->qasm3->cudaq->qasm2->cirq` | `global_phase` | exact global phase | lost | not expressible in OpenQASM; the unitary oracle ignores phases |
-| `cirq->qasm3->cudaq->qasm2->cirq` | `measurement_mapping` | exact qubit->clbit assignment / measurement keys | reordered or merged by QASM/CUDA-Q round trips | the classical-bit count stays a hard check |
-| `cirq->qasm3->cudaq->qasm2->cirq` | `qubit_topology` | named/grid qubit labels & register names | flattened to linear q[i] | OpenQASM flattens topology; only CirqJSON preserves it |
-| `cirq->qasm3->cudaq->qasm2->cirq` | `rotation_precision` | bit-exact rotation floats | angles truncated to ~10 significant digits | Cirq's QASM export serializes rotation parameters with limited precision |
-| `cirq->qasm3->cudaq->qasm2->qiskit` | `circuit_metadata` | Qiskit circuit.metadata dict | dropped | no intermediate format carries it |
-| `cirq->qasm3->cudaq->qasm2->qiskit` | `circuit_name` | reference circuit name | regenerated (e.g. 'circuit-42') | OpenQASM carries no circuit name; Cirq has none |
-| `cirq->qasm3->cudaq->qasm2->qiskit` | `cudaq_gate_decomposition` | same gate list | re-expressed in CUDA-Q's basis (cz -> h+cx+h, s/t -> rz/rx), one register per qubit | the end-of-chain unitary is checked instead of the operation chain |
-| `cirq->qasm3->cudaq->qasm2->qiskit` | `global_phase` | exact global phase | lost | not expressible in OpenQASM; the unitary oracle ignores phases |
-| `cirq->qasm3->cudaq->qasm2->qiskit` | `measurement_mapping` | exact qubit->clbit assignment / measurement keys | reordered or merged by QASM/CUDA-Q round trips | the classical-bit count stays a hard check |
-| `cirq->qasm3->cudaq->qasm2->qiskit` | `qubit_topology` | named/grid qubit labels & register names | flattened to linear q[i] | OpenQASM flattens topology; only CirqJSON preserves it |
-| `cirq->qasm3->cudaq->qasm2->qiskit` | `rotation_precision` | bit-exact rotation floats | angles truncated to ~10 significant digits | Cirq's QASM export serializes rotation parameters with limited precision |
-| `cirq->qasm3->mimiq` | `qasm_control_flow` | classical control flow preserved | not re-expressed (if/for/while/switch blocks) | qasm2<->qasm3 normalization is straight-line only |
-| `cirq->qasm3->mimiq` | `qasm_gphase` | gphase() kept | silently dropped (leaves '// dropped') | QASM2 has no global-phase syntax (qasm3->mimiq path) |
-| `cirq->qasm3->mimiq` | `qasm_stdlib_gate` | stdlib gates re-expressed in the target grammar | passed through unmapped (may not exist in target include) | normalization only renames u1/cu1 <-> p/cp |
-| `cirq->qasm3->mimiq` | `rotation_precision` | bit-exact rotation floats | angles truncated to ~10 significant digits | Cirq's QASM export serializes rotation parameters with limited precision |
-| `cirq->qasm3->qiskit` | `circuit_metadata` | Qiskit circuit.metadata dict | dropped | no intermediate format carries it |
-| `cirq->qasm3->qiskit` | `circuit_name` | reference circuit name | regenerated (e.g. 'circuit-42') | OpenQASM carries no circuit name; Cirq has none |
-| `cirq->qasm3->qiskit` | `global_phase` | exact global phase | lost | not expressible in OpenQASM; the unitary oracle ignores phases |
-| `cirq->qasm3->qiskit` | `measurement_mapping` | exact qubit->clbit assignment / measurement keys | reordered or merged by QASM/CUDA-Q round trips | the classical-bit count stays a hard check |
-| `cirq->qasm3->qiskit` | `qubit_topology` | named/grid qubit labels & register names | flattened to linear q[i] | OpenQASM flattens topology; only CirqJSON preserves it |
-| `cirq->qasm3->qiskit` | `rotation_precision` | bit-exact rotation floats | angles truncated to ~10 significant digits | Cirq's QASM export serializes rotation parameters with limited precision |
-| `cudaq->qasm3->cudaq` | `qasm_control_flow` | classical control flow preserved | not re-expressed (if/for/while/switch blocks) | qasm2<->qasm3 normalization is straight-line only |
-| `cudaq->qasm3->cudaq` | `qasm_gphase` | gphase() kept | silently dropped (leaves '// dropped') | QASM2 has no global-phase syntax (qasm3->mimiq path) |
-| `cudaq->qasm3->cudaq` | `qasm_stdlib_gate` | stdlib gates re-expressed in the target grammar | passed through unmapped (may not exist in target include) | normalization only renames u1/cu1 <-> p/cp |
-| `mimiq->qasm2->cirq` | `circuit_metadata` | Qiskit circuit.metadata dict | dropped | no intermediate format carries it |
-| `mimiq->qasm2->cirq` | `circuit_name` | reference circuit name | regenerated (e.g. 'circuit-42') | OpenQASM carries no circuit name; Cirq has none |
-| `mimiq->qasm2->cirq` | `global_phase` | exact global phase | lost | not expressible in OpenQASM; the unitary oracle ignores phases |
-| `mimiq->qasm2->cirq` | `measurement_mapping` | exact qubit->clbit assignment / measurement keys | reordered or merged by QASM/CUDA-Q round trips | the classical-bit count stays a hard check |
-| `mimiq->qasm2->cirq` | `qubit_topology` | named/grid qubit labels & register names | flattened to linear q[i] | OpenQASM flattens topology; only CirqJSON preserves it |
-| `mimiq->qasm2->qiskit` | `circuit_metadata` | Qiskit circuit.metadata dict | dropped | no intermediate format carries it |
-| `mimiq->qasm2->qiskit` | `circuit_name` | reference circuit name | regenerated (e.g. 'circuit-42') | OpenQASM carries no circuit name; Cirq has none |
-| `mimiq->qasm2->qiskit` | `global_phase` | exact global phase | lost | not expressible in OpenQASM; the unitary oracle ignores phases |
-| `mimiq->qasm2->qiskit` | `measurement_mapping` | exact qubit->clbit assignment / measurement keys | reordered or merged by QASM/CUDA-Q round trips | the classical-bit count stays a hard check |
-| `mimiq->qasm2->qiskit` | `qubit_topology` | named/grid qubit labels & register names | flattened to linear q[i] | OpenQASM flattens topology; only CirqJSON preserves it |
-| `qiskit->qasm2->cirq` | `circuit_metadata` | Qiskit circuit.metadata dict | dropped | no intermediate format carries it |
-| `qiskit->qasm2->cirq` | `circuit_name` | reference circuit name | regenerated (e.g. 'circuit-42') | OpenQASM carries no circuit name; Cirq has none |
-| `qiskit->qasm2->cirq` | `global_phase` | exact global phase | lost | not expressible in OpenQASM; the unitary oracle ignores phases |
-| `qiskit->qasm2->cirq` | `measurement_mapping` | exact qubit->clbit assignment / measurement keys | reordered or merged by QASM/CUDA-Q round trips | the classical-bit count stays a hard check |
-| `qiskit->qasm2->cirq` | `qubit_topology` | named/grid qubit labels & register names | flattened to linear q[i] | OpenQASM flattens topology; only CirqJSON preserves it |
-| `qiskit->qasm2->cudaq->qasm2->cirq` | `circuit_metadata` | Qiskit circuit.metadata dict | dropped | no intermediate format carries it |
-| `qiskit->qasm2->cudaq->qasm2->cirq` | `circuit_name` | reference circuit name | regenerated (e.g. 'circuit-42') | OpenQASM carries no circuit name; Cirq has none |
-| `qiskit->qasm2->cudaq->qasm2->cirq` | `cudaq_gate_decomposition` | same gate list | re-expressed in CUDA-Q's basis (cz -> h+cx+h, s/t -> rz/rx), one register per qubit | the end-of-chain unitary is checked instead of the operation chain |
-| `qiskit->qasm2->cudaq->qasm2->cirq` | `global_phase` | exact global phase | lost | not expressible in OpenQASM; the unitary oracle ignores phases |
-| `qiskit->qasm2->cudaq->qasm2->cirq` | `measurement_mapping` | exact qubit->clbit assignment / measurement keys | reordered or merged by QASM/CUDA-Q round trips | the classical-bit count stays a hard check |
-| `qiskit->qasm2->cudaq->qasm2->cirq` | `qubit_topology` | named/grid qubit labels & register names | flattened to linear q[i] | OpenQASM flattens topology; only CirqJSON preserves it |
-| `qiskit->qasm2->cudaq->qasm2->cirq` | `rotation_precision` | bit-exact rotation floats | angles truncated to ~10 significant digits | Cirq's QASM export serializes rotation parameters with limited precision |
-| `qiskit->qasm2->cudaq->qasm2->qiskit` | `circuit_metadata` | Qiskit circuit.metadata dict | dropped | no intermediate format carries it |
-| `qiskit->qasm2->cudaq->qasm2->qiskit` | `circuit_name` | reference circuit name | regenerated (e.g. 'circuit-42') | OpenQASM carries no circuit name; Cirq has none |
-| `qiskit->qasm2->cudaq->qasm2->qiskit` | `cudaq_gate_decomposition` | same gate list | re-expressed in CUDA-Q's basis (cz -> h+cx+h, s/t -> rz/rx), one register per qubit | the end-of-chain unitary is checked instead of the operation chain |
-| `qiskit->qasm2->cudaq->qasm2->qiskit` | `global_phase` | exact global phase | lost | not expressible in OpenQASM; the unitary oracle ignores phases |
-| `qiskit->qasm2->cudaq->qasm2->qiskit` | `measurement_mapping` | exact qubit->clbit assignment / measurement keys | reordered or merged by QASM/CUDA-Q round trips | the classical-bit count stays a hard check |
-| `qiskit->qasm2->cudaq->qasm2->qiskit` | `qubit_topology` | named/grid qubit labels & register names | flattened to linear q[i] | OpenQASM flattens topology; only CirqJSON preserves it |
-| `qiskit->qasm2->cudaq->qasm2->qiskit` | `rotation_precision` | bit-exact rotation floats | angles truncated to ~10 significant digits | Cirq's QASM export serializes rotation parameters with limited precision |
-| `qiskit->qasm2->qasm3->qiskit` | `circuit_metadata` | Qiskit circuit.metadata dict | dropped | no intermediate format carries it |
-| `qiskit->qasm2->qasm3->qiskit` | `circuit_name` | reference circuit name | regenerated (e.g. 'circuit-42') | OpenQASM carries no circuit name; Cirq has none |
-| `qiskit->qasm2->qasm3->qiskit` | `global_phase` | exact global phase | lost | not expressible in OpenQASM; the unitary oracle ignores phases |
-| `qiskit->qasm2->qasm3->qiskit` | `measurement_mapping` | exact qubit->clbit assignment / measurement keys | reordered or merged by QASM/CUDA-Q round trips | the classical-bit count stays a hard check |
-| `qiskit->qasm2->qasm3->qiskit` | `qubit_topology` | named/grid qubit labels & register names | flattened to linear q[i] | OpenQASM flattens topology; only CirqJSON preserves it |
-| `qiskit->qasm2->qiskit` | `circuit_metadata` | Qiskit circuit.metadata dict | dropped | no intermediate format carries it |
-| `qiskit->qasm2->qiskit` | `circuit_name` | reference circuit name | regenerated (e.g. 'circuit-42') | OpenQASM carries no circuit name; Cirq has none |
-| `qiskit->qasm2->qiskit` | `global_phase` | exact global phase | lost | not expressible in OpenQASM; the unitary oracle ignores phases |
-| `qiskit->qasm2->qiskit` | `measurement_mapping` | exact qubit->clbit assignment / measurement keys | reordered or merged by QASM/CUDA-Q round trips | the classical-bit count stays a hard check |
-| `qiskit->qasm2->qiskit` | `qubit_topology` | named/grid qubit labels & register names | flattened to linear q[i] | OpenQASM flattens topology; only CirqJSON preserves it |
-| `qiskit->qasm3->cirq` | `circuit_metadata` | Qiskit circuit.metadata dict | dropped | no intermediate format carries it |
-| `qiskit->qasm3->cirq` | `circuit_name` | reference circuit name | regenerated (e.g. 'circuit-42') | OpenQASM carries no circuit name; Cirq has none |
-| `qiskit->qasm3->cirq` | `global_phase` | exact global phase | lost | not expressible in OpenQASM; the unitary oracle ignores phases |
-| `qiskit->qasm3->cirq` | `measurement_mapping` | exact qubit->clbit assignment / measurement keys | reordered or merged by QASM/CUDA-Q round trips | the classical-bit count stays a hard check |
-| `qiskit->qasm3->cirq` | `qubit_topology` | named/grid qubit labels & register names | flattened to linear q[i] | OpenQASM flattens topology; only CirqJSON preserves it |
-| `qiskit->qasm3->cudaq->qasm2->cirq` | `circuit_metadata` | Qiskit circuit.metadata dict | dropped | no intermediate format carries it |
-| `qiskit->qasm3->cudaq->qasm2->cirq` | `circuit_name` | reference circuit name | regenerated (e.g. 'circuit-42') | OpenQASM carries no circuit name; Cirq has none |
-| `qiskit->qasm3->cudaq->qasm2->cirq` | `cudaq_gate_decomposition` | same gate list | re-expressed in CUDA-Q's basis (cz -> h+cx+h, s/t -> rz/rx), one register per qubit | the end-of-chain unitary is checked instead of the operation chain |
-| `qiskit->qasm3->cudaq->qasm2->cirq` | `global_phase` | exact global phase | lost | not expressible in OpenQASM; the unitary oracle ignores phases |
-| `qiskit->qasm3->cudaq->qasm2->cirq` | `measurement_mapping` | exact qubit->clbit assignment / measurement keys | reordered or merged by QASM/CUDA-Q round trips | the classical-bit count stays a hard check |
-| `qiskit->qasm3->cudaq->qasm2->cirq` | `qubit_topology` | named/grid qubit labels & register names | flattened to linear q[i] | OpenQASM flattens topology; only CirqJSON preserves it |
-| `qiskit->qasm3->cudaq->qasm2->cirq` | `rotation_precision` | bit-exact rotation floats | angles truncated to ~10 significant digits | Cirq's QASM export serializes rotation parameters with limited precision |
-| `qiskit->qasm3->cudaq->qasm2->qiskit` | `circuit_metadata` | Qiskit circuit.metadata dict | dropped | no intermediate format carries it |
-| `qiskit->qasm3->cudaq->qasm2->qiskit` | `circuit_name` | reference circuit name | regenerated (e.g. 'circuit-42') | OpenQASM carries no circuit name; Cirq has none |
-| `qiskit->qasm3->cudaq->qasm2->qiskit` | `cudaq_gate_decomposition` | same gate list | re-expressed in CUDA-Q's basis (cz -> h+cx+h, s/t -> rz/rx), one register per qubit | the end-of-chain unitary is checked instead of the operation chain |
-| `qiskit->qasm3->cudaq->qasm2->qiskit` | `global_phase` | exact global phase | lost | not expressible in OpenQASM; the unitary oracle ignores phases |
-| `qiskit->qasm3->cudaq->qasm2->qiskit` | `measurement_mapping` | exact qubit->clbit assignment / measurement keys | reordered or merged by QASM/CUDA-Q round trips | the classical-bit count stays a hard check |
-| `qiskit->qasm3->cudaq->qasm2->qiskit` | `qubit_topology` | named/grid qubit labels & register names | flattened to linear q[i] | OpenQASM flattens topology; only CirqJSON preserves it |
-| `qiskit->qasm3->cudaq->qasm2->qiskit` | `rotation_precision` | bit-exact rotation floats | angles truncated to ~10 significant digits | Cirq's QASM export serializes rotation parameters with limited precision |
-| `qiskit->qasm3->mimiq` | `qasm_control_flow` | classical control flow preserved | not re-expressed (if/for/while/switch blocks) | qasm2<->qasm3 normalization is straight-line only |
-| `qiskit->qasm3->mimiq` | `qasm_gphase` | gphase() kept | silently dropped (leaves '// dropped') | QASM2 has no global-phase syntax (qasm3->mimiq path) |
-| `qiskit->qasm3->mimiq` | `qasm_stdlib_gate` | stdlib gates re-expressed in the target grammar | passed through unmapped (may not exist in target include) | normalization only renames u1/cu1 <-> p/cp |
-| `qiskit->qasm3->qasm2->qiskit` | `circuit_metadata` | Qiskit circuit.metadata dict | dropped | no intermediate format carries it |
-| `qiskit->qasm3->qasm2->qiskit` | `circuit_name` | reference circuit name | regenerated (e.g. 'circuit-42') | OpenQASM carries no circuit name; Cirq has none |
-| `qiskit->qasm3->qasm2->qiskit` | `global_phase` | exact global phase | lost | not expressible in OpenQASM; the unitary oracle ignores phases |
-| `qiskit->qasm3->qasm2->qiskit` | `measurement_mapping` | exact qubit->clbit assignment / measurement keys | reordered or merged by QASM/CUDA-Q round trips | the classical-bit count stays a hard check |
-| `qiskit->qasm3->qasm2->qiskit` | `qubit_topology` | named/grid qubit labels & register names | flattened to linear q[i] | OpenQASM flattens topology; only CirqJSON preserves it |
-| `qiskit->qasm3->qiskit` | `circuit_metadata` | Qiskit circuit.metadata dict | dropped | no intermediate format carries it |
-| `qiskit->qasm3->qiskit` | `circuit_name` | reference circuit name | regenerated (e.g. 'circuit-42') | OpenQASM carries no circuit name; Cirq has none |
-| `qiskit->qasm3->qiskit` | `global_phase` | exact global phase | lost | not expressible in OpenQASM; the unitary oracle ignores phases |
-| `qiskit->qasm3->qiskit` | `measurement_mapping` | exact qubit->clbit assignment / measurement keys | reordered or merged by QASM/CUDA-Q round trips | the classical-bit count stays a hard check |
-| `qiskit->qasm3->qiskit` | `qubit_topology` | named/grid qubit labels & register names | flattened to linear q[i] | OpenQASM flattens topology; only CirqJSON preserves it |
+| Edge | Loss | Expected | Actual | Explanation | Observed (run) | Expected (run) |
+|---|---|---|---|---|---|---|
+| `cirq->qasm2->cirq` | `circuit_metadata` | Qiskit circuit.metadata dict | dropped | no intermediate format carries it | - | - |
+| `cirq->qasm2->cirq` | `circuit_name` | reference circuit name | regenerated (e.g. 'circuit-42') | OpenQASM carries no circuit name; Cirq has none | - | - |
+| `cirq->qasm2->cirq` | `global_phase` | exact global phase | lost | not expressible in OpenQASM; the unitary oracle ignores phases | - | - |
+| `cirq->qasm2->cirq` | `measurement_mapping` | exact qubit->clbit assignment / measurement keys | reordered or merged by QASM/CUDA-Q round trips | the classical-bit count stays a hard check | - | - |
+| `cirq->qasm2->cirq` | `qubit_topology` | named/grid qubit labels & register names | flattened to linear q[i] | OpenQASM flattens topology; only CirqJSON preserves it | - | - |
+| `cirq->qasm2->cirq` | `rotation_precision` | bit-exact rotation floats | angles truncated to ~10 significant digits | Cirq's QASM export serializes rotation parameters with limited precision | - | - |
+| `cirq->qasm2->cudaq->qasm2->cirq` | `circuit_metadata` | Qiskit circuit.metadata dict | dropped | no intermediate format carries it | - | - |
+| `cirq->qasm2->cudaq->qasm2->cirq` | `circuit_name` | reference circuit name | regenerated (e.g. 'circuit-42') | OpenQASM carries no circuit name; Cirq has none | - | - |
+| `cirq->qasm2->cudaq->qasm2->cirq` | `cudaq_gate_decomposition` | same gate list | re-expressed in CUDA-Q's basis (cz -> h+cx+h, s/t -> rz/rx), one register per qubit | the end-of-chain unitary is checked instead of the operation chain | - | - |
+| `cirq->qasm2->cudaq->qasm2->cirq` | `global_phase` | exact global phase | lost | not expressible in OpenQASM; the unitary oracle ignores phases | - | - |
+| `cirq->qasm2->cudaq->qasm2->cirq` | `measurement_mapping` | exact qubit->clbit assignment / measurement keys | reordered or merged by QASM/CUDA-Q round trips | the classical-bit count stays a hard check | - | - |
+| `cirq->qasm2->cudaq->qasm2->cirq` | `qubit_topology` | named/grid qubit labels & register names | flattened to linear q[i] | OpenQASM flattens topology; only CirqJSON preserves it | - | - |
+| `cirq->qasm2->cudaq->qasm2->cirq` | `rotation_precision` | bit-exact rotation floats | angles truncated to ~10 significant digits | Cirq's QASM export serializes rotation parameters with limited precision | - | - |
+| `cirq->qasm2->cudaq->qasm2->qiskit` | `circuit_metadata` | Qiskit circuit.metadata dict | dropped | no intermediate format carries it | - | - |
+| `cirq->qasm2->cudaq->qasm2->qiskit` | `circuit_name` | reference circuit name | regenerated (e.g. 'circuit-42') | OpenQASM carries no circuit name; Cirq has none | - | - |
+| `cirq->qasm2->cudaq->qasm2->qiskit` | `cudaq_gate_decomposition` | same gate list | re-expressed in CUDA-Q's basis (cz -> h+cx+h, s/t -> rz/rx), one register per qubit | the end-of-chain unitary is checked instead of the operation chain | - | - |
+| `cirq->qasm2->cudaq->qasm2->qiskit` | `global_phase` | exact global phase | lost | not expressible in OpenQASM; the unitary oracle ignores phases | - | - |
+| `cirq->qasm2->cudaq->qasm2->qiskit` | `measurement_mapping` | exact qubit->clbit assignment / measurement keys | reordered or merged by QASM/CUDA-Q round trips | the classical-bit count stays a hard check | - | - |
+| `cirq->qasm2->cudaq->qasm2->qiskit` | `qubit_topology` | named/grid qubit labels & register names | flattened to linear q[i] | OpenQASM flattens topology; only CirqJSON preserves it | - | - |
+| `cirq->qasm2->cudaq->qasm2->qiskit` | `rotation_precision` | bit-exact rotation floats | angles truncated to ~10 significant digits | Cirq's QASM export serializes rotation parameters with limited precision | - | - |
+| `cirq->qasm2->mimiq` | `rotation_precision` | bit-exact rotation floats | angles truncated to ~10 significant digits | Cirq's QASM export serializes rotation parameters with limited precision | - | - |
+| `cirq->qasm2->qiskit` | `circuit_metadata` | Qiskit circuit.metadata dict | dropped | no intermediate format carries it | - | - |
+| `cirq->qasm2->qiskit` | `circuit_name` | reference circuit name | regenerated (e.g. 'circuit-42') | OpenQASM carries no circuit name; Cirq has none | - | - |
+| `cirq->qasm2->qiskit` | `global_phase` | exact global phase | lost | not expressible in OpenQASM; the unitary oracle ignores phases | - | - |
+| `cirq->qasm2->qiskit` | `measurement_mapping` | exact qubit->clbit assignment / measurement keys | reordered or merged by QASM/CUDA-Q round trips | the classical-bit count stays a hard check | - | - |
+| `cirq->qasm2->qiskit` | `qubit_topology` | named/grid qubit labels & register names | flattened to linear q[i] | OpenQASM flattens topology; only CirqJSON preserves it | - | - |
+| `cirq->qasm2->qiskit` | `rotation_precision` | bit-exact rotation floats | angles truncated to ~10 significant digits | Cirq's QASM export serializes rotation parameters with limited precision | - | - |
+| `cirq->qasm3->cirq` | `circuit_metadata` | Qiskit circuit.metadata dict | dropped | no intermediate format carries it | - | - |
+| `cirq->qasm3->cirq` | `circuit_name` | reference circuit name | regenerated (e.g. 'circuit-42') | OpenQASM carries no circuit name; Cirq has none | - | - |
+| `cirq->qasm3->cirq` | `global_phase` | exact global phase | lost | not expressible in OpenQASM; the unitary oracle ignores phases | - | - |
+| `cirq->qasm3->cirq` | `measurement_mapping` | exact qubit->clbit assignment / measurement keys | reordered or merged by QASM/CUDA-Q round trips | the classical-bit count stays a hard check | - | - |
+| `cirq->qasm3->cirq` | `qubit_topology` | named/grid qubit labels & register names | flattened to linear q[i] | OpenQASM flattens topology; only CirqJSON preserves it | - | - |
+| `cirq->qasm3->cirq` | `rotation_precision` | bit-exact rotation floats | angles truncated to ~10 significant digits | Cirq's QASM export serializes rotation parameters with limited precision | - | - |
+| `cirq->qasm3->cudaq` | `rotation_precision` | bit-exact rotation floats | angles truncated to ~10 significant digits | Cirq's QASM export serializes rotation parameters with limited precision | - | - |
+| `cirq->qasm3->cudaq->qasm2->cirq` | `circuit_metadata` | Qiskit circuit.metadata dict | dropped | no intermediate format carries it | - | - |
+| `cirq->qasm3->cudaq->qasm2->cirq` | `circuit_name` | reference circuit name | regenerated (e.g. 'circuit-42') | OpenQASM carries no circuit name; Cirq has none | - | - |
+| `cirq->qasm3->cudaq->qasm2->cirq` | `cudaq_gate_decomposition` | same gate list | re-expressed in CUDA-Q's basis (cz -> h+cx+h, s/t -> rz/rx), one register per qubit | the end-of-chain unitary is checked instead of the operation chain | - | - |
+| `cirq->qasm3->cudaq->qasm2->cirq` | `global_phase` | exact global phase | lost | not expressible in OpenQASM; the unitary oracle ignores phases | - | - |
+| `cirq->qasm3->cudaq->qasm2->cirq` | `measurement_mapping` | exact qubit->clbit assignment / measurement keys | reordered or merged by QASM/CUDA-Q round trips | the classical-bit count stays a hard check | - | - |
+| `cirq->qasm3->cudaq->qasm2->cirq` | `qubit_topology` | named/grid qubit labels & register names | flattened to linear q[i] | OpenQASM flattens topology; only CirqJSON preserves it | - | - |
+| `cirq->qasm3->cudaq->qasm2->cirq` | `rotation_precision` | bit-exact rotation floats | angles truncated to ~10 significant digits | Cirq's QASM export serializes rotation parameters with limited precision | - | - |
+| `cirq->qasm3->cudaq->qasm2->qiskit` | `circuit_metadata` | Qiskit circuit.metadata dict | dropped | no intermediate format carries it | - | - |
+| `cirq->qasm3->cudaq->qasm2->qiskit` | `circuit_name` | reference circuit name | regenerated (e.g. 'circuit-42') | OpenQASM carries no circuit name; Cirq has none | - | - |
+| `cirq->qasm3->cudaq->qasm2->qiskit` | `cudaq_gate_decomposition` | same gate list | re-expressed in CUDA-Q's basis (cz -> h+cx+h, s/t -> rz/rx), one register per qubit | the end-of-chain unitary is checked instead of the operation chain | - | - |
+| `cirq->qasm3->cudaq->qasm2->qiskit` | `global_phase` | exact global phase | lost | not expressible in OpenQASM; the unitary oracle ignores phases | - | - |
+| `cirq->qasm3->cudaq->qasm2->qiskit` | `measurement_mapping` | exact qubit->clbit assignment / measurement keys | reordered or merged by QASM/CUDA-Q round trips | the classical-bit count stays a hard check | - | - |
+| `cirq->qasm3->cudaq->qasm2->qiskit` | `qubit_topology` | named/grid qubit labels & register names | flattened to linear q[i] | OpenQASM flattens topology; only CirqJSON preserves it | - | - |
+| `cirq->qasm3->cudaq->qasm2->qiskit` | `rotation_precision` | bit-exact rotation floats | angles truncated to ~10 significant digits | Cirq's QASM export serializes rotation parameters with limited precision | - | - |
+| `cirq->qasm3->mimiq` | `qasm_control_flow` | classical control flow preserved | not re-expressed (if/for/while/switch blocks) | qasm2<->qasm3 normalization is straight-line only | - | - |
+| `cirq->qasm3->mimiq` | `qasm_gphase` | gphase() kept | silently dropped (leaves '// dropped') | QASM2 has no global-phase syntax (qasm3->mimiq path) | - | - |
+| `cirq->qasm3->mimiq` | `qasm_stdlib_gate` | stdlib gates re-expressed in the target grammar | passed through unmapped (may not exist in target include) | normalization only renames u1/cu1 <-> p/cp | - | - |
+| `cirq->qasm3->mimiq` | `rotation_precision` | bit-exact rotation floats | angles truncated to ~10 significant digits | Cirq's QASM export serializes rotation parameters with limited precision | - | - |
+| `cirq->qasm3->qiskit` | `circuit_metadata` | Qiskit circuit.metadata dict | dropped | no intermediate format carries it | - | - |
+| `cirq->qasm3->qiskit` | `circuit_name` | reference circuit name | regenerated (e.g. 'circuit-42') | OpenQASM carries no circuit name; Cirq has none | - | - |
+| `cirq->qasm3->qiskit` | `global_phase` | exact global phase | lost | not expressible in OpenQASM; the unitary oracle ignores phases | - | - |
+| `cirq->qasm3->qiskit` | `measurement_mapping` | exact qubit->clbit assignment / measurement keys | reordered or merged by QASM/CUDA-Q round trips | the classical-bit count stays a hard check | - | - |
+| `cirq->qasm3->qiskit` | `qubit_topology` | named/grid qubit labels & register names | flattened to linear q[i] | OpenQASM flattens topology; only CirqJSON preserves it | - | - |
+| `cirq->qasm3->qiskit` | `rotation_precision` | bit-exact rotation floats | angles truncated to ~10 significant digits | Cirq's QASM export serializes rotation parameters with limited precision | - | - |
+| `cudaq->qasm3->cudaq` | `qasm_control_flow` | classical control flow preserved | not re-expressed (if/for/while/switch blocks) | qasm2<->qasm3 normalization is straight-line only | - | - |
+| `cudaq->qasm3->cudaq` | `qasm_gphase` | gphase() kept | silently dropped (leaves '// dropped') | QASM2 has no global-phase syntax (qasm3->mimiq path) | - | - |
+| `cudaq->qasm3->cudaq` | `qasm_stdlib_gate` | stdlib gates re-expressed in the target grammar | passed through unmapped (may not exist in target include) | normalization only renames u1/cu1 <-> p/cp | - | - |
+| `mimiq->qasm2->cirq` | `circuit_metadata` | Qiskit circuit.metadata dict | dropped | no intermediate format carries it | - | - |
+| `mimiq->qasm2->cirq` | `circuit_name` | reference circuit name | regenerated (e.g. 'circuit-42') | OpenQASM carries no circuit name; Cirq has none | - | - |
+| `mimiq->qasm2->cirq` | `global_phase` | exact global phase | lost | not expressible in OpenQASM; the unitary oracle ignores phases | - | - |
+| `mimiq->qasm2->cirq` | `measurement_mapping` | exact qubit->clbit assignment / measurement keys | reordered or merged by QASM/CUDA-Q round trips | the classical-bit count stays a hard check | - | - |
+| `mimiq->qasm2->cirq` | `qubit_topology` | named/grid qubit labels & register names | flattened to linear q[i] | OpenQASM flattens topology; only CirqJSON preserves it | - | - |
+| `mimiq->qasm2->qiskit` | `circuit_metadata` | Qiskit circuit.metadata dict | dropped | no intermediate format carries it | - | - |
+| `mimiq->qasm2->qiskit` | `circuit_name` | reference circuit name | regenerated (e.g. 'circuit-42') | OpenQASM carries no circuit name; Cirq has none | - | - |
+| `mimiq->qasm2->qiskit` | `global_phase` | exact global phase | lost | not expressible in OpenQASM; the unitary oracle ignores phases | - | - |
+| `mimiq->qasm2->qiskit` | `measurement_mapping` | exact qubit->clbit assignment / measurement keys | reordered or merged by QASM/CUDA-Q round trips | the classical-bit count stays a hard check | - | - |
+| `mimiq->qasm2->qiskit` | `qubit_topology` | named/grid qubit labels & register names | flattened to linear q[i] | OpenQASM flattens topology; only CirqJSON preserves it | - | - |
+| `qiskit->qasm2->cirq` | `circuit_metadata` | Qiskit circuit.metadata dict | dropped | no intermediate format carries it | - | - |
+| `qiskit->qasm2->cirq` | `circuit_name` | reference circuit name | regenerated (e.g. 'circuit-42') | OpenQASM carries no circuit name; Cirq has none | - | - |
+| `qiskit->qasm2->cirq` | `global_phase` | exact global phase | lost | not expressible in OpenQASM; the unitary oracle ignores phases | - | - |
+| `qiskit->qasm2->cirq` | `measurement_mapping` | exact qubit->clbit assignment / measurement keys | reordered or merged by QASM/CUDA-Q round trips | the classical-bit count stays a hard check | - | - |
+| `qiskit->qasm2->cirq` | `qubit_topology` | named/grid qubit labels & register names | flattened to linear q[i] | OpenQASM flattens topology; only CirqJSON preserves it | - | - |
+| `qiskit->qasm2->cudaq->qasm2->cirq` | `circuit_metadata` | Qiskit circuit.metadata dict | dropped | no intermediate format carries it | - | - |
+| `qiskit->qasm2->cudaq->qasm2->cirq` | `circuit_name` | reference circuit name | regenerated (e.g. 'circuit-42') | OpenQASM carries no circuit name; Cirq has none | - | - |
+| `qiskit->qasm2->cudaq->qasm2->cirq` | `cudaq_gate_decomposition` | same gate list | re-expressed in CUDA-Q's basis (cz -> h+cx+h, s/t -> rz/rx), one register per qubit | the end-of-chain unitary is checked instead of the operation chain | - | - |
+| `qiskit->qasm2->cudaq->qasm2->cirq` | `global_phase` | exact global phase | lost | not expressible in OpenQASM; the unitary oracle ignores phases | - | - |
+| `qiskit->qasm2->cudaq->qasm2->cirq` | `measurement_mapping` | exact qubit->clbit assignment / measurement keys | reordered or merged by QASM/CUDA-Q round trips | the classical-bit count stays a hard check | - | - |
+| `qiskit->qasm2->cudaq->qasm2->cirq` | `qubit_topology` | named/grid qubit labels & register names | flattened to linear q[i] | OpenQASM flattens topology; only CirqJSON preserves it | - | - |
+| `qiskit->qasm2->cudaq->qasm2->cirq` | `rotation_precision` | bit-exact rotation floats | angles truncated to ~10 significant digits | Cirq's QASM export serializes rotation parameters with limited precision | - | - |
+| `qiskit->qasm2->cudaq->qasm2->qiskit` | `circuit_metadata` | Qiskit circuit.metadata dict | dropped | no intermediate format carries it | - | - |
+| `qiskit->qasm2->cudaq->qasm2->qiskit` | `circuit_name` | reference circuit name | regenerated (e.g. 'circuit-42') | OpenQASM carries no circuit name; Cirq has none | - | - |
+| `qiskit->qasm2->cudaq->qasm2->qiskit` | `cudaq_gate_decomposition` | same gate list | re-expressed in CUDA-Q's basis (cz -> h+cx+h, s/t -> rz/rx), one register per qubit | the end-of-chain unitary is checked instead of the operation chain | - | - |
+| `qiskit->qasm2->cudaq->qasm2->qiskit` | `global_phase` | exact global phase | lost | not expressible in OpenQASM; the unitary oracle ignores phases | - | - |
+| `qiskit->qasm2->cudaq->qasm2->qiskit` | `measurement_mapping` | exact qubit->clbit assignment / measurement keys | reordered or merged by QASM/CUDA-Q round trips | the classical-bit count stays a hard check | - | - |
+| `qiskit->qasm2->cudaq->qasm2->qiskit` | `qubit_topology` | named/grid qubit labels & register names | flattened to linear q[i] | OpenQASM flattens topology; only CirqJSON preserves it | - | - |
+| `qiskit->qasm2->cudaq->qasm2->qiskit` | `rotation_precision` | bit-exact rotation floats | angles truncated to ~10 significant digits | Cirq's QASM export serializes rotation parameters with limited precision | - | - |
+| `qiskit->qasm2->qasm3->qiskit` | `circuit_metadata` | Qiskit circuit.metadata dict | dropped | no intermediate format carries it | - | - |
+| `qiskit->qasm2->qasm3->qiskit` | `circuit_name` | reference circuit name | regenerated (e.g. 'circuit-42') | OpenQASM carries no circuit name; Cirq has none | - | - |
+| `qiskit->qasm2->qasm3->qiskit` | `global_phase` | exact global phase | lost | not expressible in OpenQASM; the unitary oracle ignores phases | - | - |
+| `qiskit->qasm2->qasm3->qiskit` | `measurement_mapping` | exact qubit->clbit assignment / measurement keys | reordered or merged by QASM/CUDA-Q round trips | the classical-bit count stays a hard check | - | - |
+| `qiskit->qasm2->qasm3->qiskit` | `qubit_topology` | named/grid qubit labels & register names | flattened to linear q[i] | OpenQASM flattens topology; only CirqJSON preserves it | - | - |
+| `qiskit->qasm2->qiskit` | `circuit_metadata` | Qiskit circuit.metadata dict | dropped | no intermediate format carries it | - | - |
+| `qiskit->qasm2->qiskit` | `circuit_name` | reference circuit name | regenerated (e.g. 'circuit-42') | OpenQASM carries no circuit name; Cirq has none | - | - |
+| `qiskit->qasm2->qiskit` | `global_phase` | exact global phase | lost | not expressible in OpenQASM; the unitary oracle ignores phases | - | - |
+| `qiskit->qasm2->qiskit` | `measurement_mapping` | exact qubit->clbit assignment / measurement keys | reordered or merged by QASM/CUDA-Q round trips | the classical-bit count stays a hard check | - | - |
+| `qiskit->qasm2->qiskit` | `qubit_topology` | named/grid qubit labels & register names | flattened to linear q[i] | OpenQASM flattens topology; only CirqJSON preserves it | - | - |
+| `qiskit->qasm3->cirq` | `circuit_metadata` | Qiskit circuit.metadata dict | dropped | no intermediate format carries it | - | - |
+| `qiskit->qasm3->cirq` | `circuit_name` | reference circuit name | regenerated (e.g. 'circuit-42') | OpenQASM carries no circuit name; Cirq has none | - | - |
+| `qiskit->qasm3->cirq` | `global_phase` | exact global phase | lost | not expressible in OpenQASM; the unitary oracle ignores phases | - | - |
+| `qiskit->qasm3->cirq` | `measurement_mapping` | exact qubit->clbit assignment / measurement keys | reordered or merged by QASM/CUDA-Q round trips | the classical-bit count stays a hard check | - | - |
+| `qiskit->qasm3->cirq` | `qubit_topology` | named/grid qubit labels & register names | flattened to linear q[i] | OpenQASM flattens topology; only CirqJSON preserves it | - | - |
+| `qiskit->qasm3->cudaq->qasm2->cirq` | `circuit_metadata` | Qiskit circuit.metadata dict | dropped | no intermediate format carries it | - | - |
+| `qiskit->qasm3->cudaq->qasm2->cirq` | `circuit_name` | reference circuit name | regenerated (e.g. 'circuit-42') | OpenQASM carries no circuit name; Cirq has none | - | - |
+| `qiskit->qasm3->cudaq->qasm2->cirq` | `cudaq_gate_decomposition` | same gate list | re-expressed in CUDA-Q's basis (cz -> h+cx+h, s/t -> rz/rx), one register per qubit | the end-of-chain unitary is checked instead of the operation chain | - | - |
+| `qiskit->qasm3->cudaq->qasm2->cirq` | `global_phase` | exact global phase | lost | not expressible in OpenQASM; the unitary oracle ignores phases | - | - |
+| `qiskit->qasm3->cudaq->qasm2->cirq` | `measurement_mapping` | exact qubit->clbit assignment / measurement keys | reordered or merged by QASM/CUDA-Q round trips | the classical-bit count stays a hard check | - | - |
+| `qiskit->qasm3->cudaq->qasm2->cirq` | `qubit_topology` | named/grid qubit labels & register names | flattened to linear q[i] | OpenQASM flattens topology; only CirqJSON preserves it | - | - |
+| `qiskit->qasm3->cudaq->qasm2->cirq` | `rotation_precision` | bit-exact rotation floats | angles truncated to ~10 significant digits | Cirq's QASM export serializes rotation parameters with limited precision | - | - |
+| `qiskit->qasm3->cudaq->qasm2->qiskit` | `circuit_metadata` | Qiskit circuit.metadata dict | dropped | no intermediate format carries it | - | - |
+| `qiskit->qasm3->cudaq->qasm2->qiskit` | `circuit_name` | reference circuit name | regenerated (e.g. 'circuit-42') | OpenQASM carries no circuit name; Cirq has none | - | - |
+| `qiskit->qasm3->cudaq->qasm2->qiskit` | `cudaq_gate_decomposition` | same gate list | re-expressed in CUDA-Q's basis (cz -> h+cx+h, s/t -> rz/rx), one register per qubit | the end-of-chain unitary is checked instead of the operation chain | - | - |
+| `qiskit->qasm3->cudaq->qasm2->qiskit` | `global_phase` | exact global phase | lost | not expressible in OpenQASM; the unitary oracle ignores phases | - | - |
+| `qiskit->qasm3->cudaq->qasm2->qiskit` | `measurement_mapping` | exact qubit->clbit assignment / measurement keys | reordered or merged by QASM/CUDA-Q round trips | the classical-bit count stays a hard check | - | - |
+| `qiskit->qasm3->cudaq->qasm2->qiskit` | `qubit_topology` | named/grid qubit labels & register names | flattened to linear q[i] | OpenQASM flattens topology; only CirqJSON preserves it | - | - |
+| `qiskit->qasm3->cudaq->qasm2->qiskit` | `rotation_precision` | bit-exact rotation floats | angles truncated to ~10 significant digits | Cirq's QASM export serializes rotation parameters with limited precision | - | - |
+| `qiskit->qasm3->mimiq` | `qasm_control_flow` | classical control flow preserved | not re-expressed (if/for/while/switch blocks) | qasm2<->qasm3 normalization is straight-line only | - | - |
+| `qiskit->qasm3->mimiq` | `qasm_gphase` | gphase() kept | silently dropped (leaves '// dropped') | QASM2 has no global-phase syntax (qasm3->mimiq path) | - | - |
+| `qiskit->qasm3->mimiq` | `qasm_stdlib_gate` | stdlib gates re-expressed in the target grammar | passed through unmapped (may not exist in target include) | normalization only renames u1/cu1 <-> p/cp | - | - |
+| `qiskit->qasm3->qasm2->qiskit` | `circuit_metadata` | Qiskit circuit.metadata dict | dropped | no intermediate format carries it | - | - |
+| `qiskit->qasm3->qasm2->qiskit` | `circuit_name` | reference circuit name | regenerated (e.g. 'circuit-42') | OpenQASM carries no circuit name; Cirq has none | - | - |
+| `qiskit->qasm3->qasm2->qiskit` | `global_phase` | exact global phase | lost | not expressible in OpenQASM; the unitary oracle ignores phases | - | - |
+| `qiskit->qasm3->qasm2->qiskit` | `measurement_mapping` | exact qubit->clbit assignment / measurement keys | reordered or merged by QASM/CUDA-Q round trips | the classical-bit count stays a hard check | - | - |
+| `qiskit->qasm3->qasm2->qiskit` | `qubit_topology` | named/grid qubit labels & register names | flattened to linear q[i] | OpenQASM flattens topology; only CirqJSON preserves it | - | - |
+| `qiskit->qasm3->qiskit` | `circuit_metadata` | Qiskit circuit.metadata dict | dropped | no intermediate format carries it | - | - |
+| `qiskit->qasm3->qiskit` | `circuit_name` | reference circuit name | regenerated (e.g. 'circuit-42') | OpenQASM carries no circuit name; Cirq has none | - | - |
+| `qiskit->qasm3->qiskit` | `global_phase` | exact global phase | lost | not expressible in OpenQASM; the unitary oracle ignores phases | - | - |
+| `qiskit->qasm3->qiskit` | `measurement_mapping` | exact qubit->clbit assignment / measurement keys | reordered or merged by QASM/CUDA-Q round trips | the classical-bit count stays a hard check | - | - |
+| `qiskit->qasm3->qiskit` | `qubit_topology` | named/grid qubit labels & register names | flattened to linear q[i] | OpenQASM flattens topology; only CirqJSON preserves it | - | - |
 
 *Lossless edges:* `cirq->cirqjson->cirq`, `cirq->qir`, `cirq->qir->cudaq`, `cudaq->qir`, `cudaq->qir->cudaq`, `qiskit->qasm2->cudaq`, `qiskit->qasm2->mimiq`, `qiskit->qasm3->cudaq`, `qiskit->qir`, `qiskit->qir->cudaq`.
 
 ### analog paradigm
 
-| Edge | Loss | Expected | Actual | Explanation |
-|---|---|---|---|---|
-| `pulser->pulserjson->pulser` | `analog_device` | exact Pulser device object | none (guard; never recorded today) | abstract repr is device-independent; guards a future pulser dropping the device |
+| Edge | Loss | Expected | Actual | Explanation | Observed (run) | Expected (run) |
+|---|---|---|---|---|---|---|
+| `pulser->pulserjson->pulser` | `analog_device` | exact Pulser device object | none (guard; never recorded today) | abstract repr is device-independent; guards a future pulser dropping the device | - | - |
 
 ### photonic paradigm
 
-| Edge | Loss | Expected | Actual | Explanation |
-|---|---|---|---|---|
+| Edge | Loss | Expected | Actual | Explanation | Observed (run) | Expected (run) |
+|---|---|---|---|---|---|---|
 
 *Lossless edges:* `perceval->percevaljson->perceval`, `perceval_experiment->percevaljson->perceval_experiment`.
 
@@ -215,38 +215,38 @@ The counts histogram is always compared bit-exact; the rows below are the tolera
 
 ### gate paradigm
 
-| Edge | Loss | Expected | Actual | Explanation |
-|---|---|---|---|---|
-| `cirq.Result -> cirq_result_json_v1 -> cirq.Result` | `cirq_params` | cirq.Result params | always None | cirq.ParamResolver is not JSON-serializable by the qio pipeline |
-| `cirq.Result -> cirq_result_json_v1 -> mimiqcircuits.QCSResults` | `cirq_params` | cirq.Result params | always None | cirq.ParamResolver is not JSON-serializable by the qio pipeline |
-| `cirq.Result -> cirq_result_json_v1 -> mimiqcircuits.QCSResults` | `mimiq_amplitudes` | MIMIQ amplitudes | not representable through result JSON | bitarray keys + complex values are not JSON-serializable |
-| `cirq.Result -> cirq_result_json_v1 -> mimiqcircuits.QCSResults` | `mimiq_metadata` | MIMIQ zstates/fidelities/avggateerrors/timings | dropped | not carried by mimiq_to_dict / dict_to_mimiq today |
-| `cirq.Result -> cirq_result_json_v1 -> qiskit.Result` | `cirq_params` | cirq.Result params | always None | cirq.ParamResolver is not JSON-serializable by the qio pipeline |
-| `cirq.Result -> cirq_result_json_v1 -> qiskit.Result` | `qiskit_metadata` | qiskit job metadata (backend_name/version, job_id, qobj_id, date) | dropped off the self path | backend/job identifiers are not carried by every source SDK into the JSON intermediate |
-| `cirq.Result -> cirq_result_json_v1 -> qiskit.Result` | `qiskit_statevector` | qiskit data.statevector | dropped off the self path | numpy/complex is not JSON-safe |
-| `cudaq.SampleResult -> cudaq_sample_result_json_v1 -> qiskit.Result` | `qiskit_metadata` | qiskit job metadata (backend_name/version, job_id, qobj_id, date) | dropped off the self path | backend/job identifiers are not carried by every source SDK into the JSON intermediate |
-| `cudaq.SampleResult -> cudaq_sample_result_json_v1 -> qiskit.Result` | `qiskit_statevector` | qiskit data.statevector | dropped off the self path | numpy/complex is not JSON-safe |
-| `mimiqcircuits.QCSResults -> mimiq_qcsr_json_v1 -> mimiqcircuits.QCSResults` | `mimiq_amplitudes` | MIMIQ amplitudes | not representable through result JSON | bitarray keys + complex values are not JSON-serializable |
-| `mimiqcircuits.QCSResults -> mimiq_qcsr_json_v1 -> mimiqcircuits.QCSResults` | `mimiq_metadata` | MIMIQ zstates/fidelities/avggateerrors/timings | dropped | not carried by mimiq_to_dict / dict_to_mimiq today |
-| `mimiqcircuits.QCSResults -> mimiq_qcsr_json_v1 -> qiskit.Result` | `qiskit_metadata` | qiskit job metadata (backend_name/version, job_id, qobj_id, date) | dropped off the self path | backend/job identifiers are not carried by every source SDK into the JSON intermediate |
-| `mimiqcircuits.QCSResults -> mimiq_qcsr_json_v1 -> qiskit.Result` | `qiskit_statevector` | qiskit data.statevector | dropped off the self path | numpy/complex is not JSON-safe |
-| `qiskit.Result -> qiskit_result_json_v1 -> mimiqcircuits.QCSResults` | `mimiq_amplitudes` | MIMIQ amplitudes | not representable through result JSON | bitarray keys + complex values are not JSON-serializable |
-| `qiskit.Result -> qiskit_result_json_v1 -> mimiqcircuits.QCSResults` | `mimiq_metadata` | MIMIQ zstates/fidelities/avggateerrors/timings | dropped | not carried by mimiq_to_dict / dict_to_mimiq today |
-| `qiskit.Result -> qiskit_result_json_v1 -> qiskit.Result` | `qiskit_statevector` | qiskit data.statevector | dropped off the self path | numpy/complex is not JSON-safe |
+| Edge | Loss | Expected | Actual | Explanation | Observed (run) | Expected (run) |
+|---|---|---|---|---|---|---|
+| `cirq.Result -> cirq_result_json_v1 -> cirq.Result` | `cirq_params` | cirq.Result params | always None | cirq.ParamResolver is not JSON-serializable by the qio pipeline | - | - |
+| `cirq.Result -> cirq_result_json_v1 -> mimiqcircuits.QCSResults` | `cirq_params` | cirq.Result params | always None | cirq.ParamResolver is not JSON-serializable by the qio pipeline | - | - |
+| `cirq.Result -> cirq_result_json_v1 -> mimiqcircuits.QCSResults` | `mimiq_amplitudes` | MIMIQ amplitudes | not representable through result JSON | bitarray keys + complex values are not JSON-serializable | `amplitudes` = `{}` | <details><summary>5 values</summary><br>`amplitudes` = `{'00': (0.7071067811865475+0j), '11': (0.7071067811865475+0j)}`<br>`amplitudes` = `{'000': (0.7071067811865475+0j), '111': (0.7071067811865475+0j)}`<br>`amplitudes` = `{'01': (0.7071067811865475+0j), '10': (0.7071067811865475+0j)}`<br>`amplitudes` = `{'1': (1+0j)}`<br>`amplitudes` = `{'11': (1+0j)}`</details> |
+| `cirq.Result -> cirq_result_json_v1 -> mimiqcircuits.QCSResults` | `mimiq_metadata` | MIMIQ zstates/fidelities/avggateerrors/timings | dropped | not carried by mimiq_to_dict / dict_to_mimiq today | <details><summary>6 values</summary><br>`avggateerrors` = `[]`<br>`fidelities` = `[]`<br>`simulator` = `'Cirq-Simulator'`<br>`timings` = `{}`<br>`version` = `'1.5.0'`<br>`zstates` = `[]`</details> | <details><summary>20 values</summary><br>`avggateerrors` = `[0.002]`<br>`avggateerrors` = `[0.003]`<br>`avggateerrors` = `[0.01]`<br>`avggateerrors` = `[0.0]`<br>`fidelities` = `[0.98]`<br>`fidelities` = `[0.995]`<br>`fidelities` = `[0.99]`<br>`fidelities` = `[1.0]`<br>`simulator` = `'qio-test-simulator'`<br>`timings` = `{'total': 0.0031, 'apply': 0.0022}`<br>`timings` = `{'total': 0.0087, 'apply': 0.0066}`<br>`timings` = `{'total': 0.0119, 'apply': 0.0083}`<br>`timings` = `{'total': 0.0123, 'apply': 0.0091}`<br>`timings` = `{'total': 0.0231, 'apply': 0.0184}`<br>`version` = `'1.0'`<br>`zstates` = `['00']`<br>`zstates` = `['000']`<br>`zstates` = `['01']`<br>`zstates` = `['1']`<br>`zstates` = `['11']`</details> |
+| `cirq.Result -> cirq_result_json_v1 -> qiskit.Result` | `cirq_params` | cirq.Result params | always None | cirq.ParamResolver is not JSON-serializable by the qio pipeline | - | - |
+| `cirq.Result -> cirq_result_json_v1 -> qiskit.Result` | `qiskit_metadata` | qiskit job metadata (backend_name/version, job_id, qobj_id, date) | dropped off the self path | backend/job identifiers are not carried by every source SDK into the JSON intermediate | - | <details><summary>5 values</summary><br>`backend_name` = `'qio-test-simulator'`<br>`backend_version` = `'1.0'`<br>`date` = `'2026-01-01T00:00:00+00:00'`<br>`job_id` = `'qio-result-job'`<br>`qobj_id` = `'qio-result-qobj'`</details> |
+| `cirq.Result -> cirq_result_json_v1 -> qiskit.Result` | `qiskit_statevector` | qiskit data.statevector | dropped off the self path | numpy/complex is not JSON-safe | - | <details><summary>5 values</summary><br>`statevector` = `[0.0, 0.0, 0.0, 1.0]`<br>`statevector` = `[0.0, 0.7071067811865475, 0.7071067811865475, 0.0]`<br>`statevector` = `[0.0, 1.0]`<br>`statevector` = `[0.7071067811865475, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.7071067811865475]`<br>`statevector` = `[0.7071067811865475, 0.0, 0.0, 0.7071067811865475]`</details> |
+| `cudaq.SampleResult -> cudaq_sample_result_json_v1 -> qiskit.Result` | `qiskit_metadata` | qiskit job metadata (backend_name/version, job_id, qobj_id, date) | dropped off the self path | backend/job identifiers are not carried by every source SDK into the JSON intermediate | - | <details><summary>5 values</summary><br>`backend_name` = `'qio-test-simulator'`<br>`backend_version` = `'1.0'`<br>`date` = `'2026-01-01T00:00:00+00:00'`<br>`job_id` = `'qio-result-job'`<br>`qobj_id` = `'qio-result-qobj'`</details> |
+| `cudaq.SampleResult -> cudaq_sample_result_json_v1 -> qiskit.Result` | `qiskit_statevector` | qiskit data.statevector | dropped off the self path | numpy/complex is not JSON-safe | - | <details><summary>5 values</summary><br>`statevector` = `[0.0, 0.0, 0.0, 1.0]`<br>`statevector` = `[0.0, 0.7071067811865475, 0.7071067811865475, 0.0]`<br>`statevector` = `[0.0, 1.0]`<br>`statevector` = `[0.7071067811865475, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.7071067811865475]`<br>`statevector` = `[0.7071067811865475, 0.0, 0.0, 0.7071067811865475]`</details> |
+| `mimiqcircuits.QCSResults -> mimiq_qcsr_json_v1 -> mimiqcircuits.QCSResults` | `mimiq_amplitudes` | MIMIQ amplitudes | not representable through result JSON | bitarray keys + complex values are not JSON-serializable | `amplitudes` = `{}` | <details><summary>5 values</summary><br>`amplitudes` = `{'00': (0.7071067811865475+0j), '11': (0.7071067811865475+0j)}`<br>`amplitudes` = `{'000': (0.7071067811865475+0j), '111': (0.7071067811865475+0j)}`<br>`amplitudes` = `{'01': (0.7071067811865475+0j), '10': (0.7071067811865475+0j)}`<br>`amplitudes` = `{'1': (1+0j)}`<br>`amplitudes` = `{'11': (1+0j)}`</details> |
+| `mimiqcircuits.QCSResults -> mimiq_qcsr_json_v1 -> mimiqcircuits.QCSResults` | `mimiq_metadata` | MIMIQ zstates/fidelities/avggateerrors/timings | dropped | not carried by mimiq_to_dict / dict_to_mimiq today | <details><summary>4 values</summary><br>`avggateerrors` = `[]`<br>`fidelities` = `[]`<br>`timings` = `{}`<br>`zstates` = `[]`</details> | <details><summary>18 values</summary><br>`avggateerrors` = `[0.002]`<br>`avggateerrors` = `[0.003]`<br>`avggateerrors` = `[0.01]`<br>`avggateerrors` = `[0.0]`<br>`fidelities` = `[0.98]`<br>`fidelities` = `[0.995]`<br>`fidelities` = `[0.99]`<br>`fidelities` = `[1.0]`<br>`timings` = `{'total': 0.0031, 'apply': 0.0022}`<br>`timings` = `{'total': 0.0087, 'apply': 0.0066}`<br>`timings` = `{'total': 0.0119, 'apply': 0.0083}`<br>`timings` = `{'total': 0.0123, 'apply': 0.0091}`<br>`timings` = `{'total': 0.0231, 'apply': 0.0184}`<br>`zstates` = `['00']`<br>`zstates` = `['000']`<br>`zstates` = `['01']`<br>`zstates` = `['1']`<br>`zstates` = `['11']`</details> |
+| `mimiqcircuits.QCSResults -> mimiq_qcsr_json_v1 -> qiskit.Result` | `qiskit_metadata` | qiskit job metadata (backend_name/version, job_id, qobj_id, date) | dropped off the self path | backend/job identifiers are not carried by every source SDK into the JSON intermediate | <details><summary>12 values</summary><br>`date` = `'2026-10-30T11:48:21.063628'`<br>`date` = `'2026-10-30T11:48:21.065036'`<br>`date` = `'2026-10-30T11:48:21.066298'`<br>`date` = `'2026-10-30T11:48:21.067093'`<br>`date` = `'2026-10-30T11:48:21.068107'`<br>`date` = `'2026-10-30T11:48:21.162806'`<br>`date` = `'2026-10-30T11:48:21.164202'`<br>`date` = `'2026-10-30T11:48:21.165440'`<br>`date` = `'2026-10-30T11:48:21.166223'`<br>`date` = `'2026-10-30T11:48:21.167345'`<br>`job_id` = `'unknown'`<br>`qobj_id` = `'unknown'`</details> | <details><summary>3 values</summary><br>`date` = `'2026-01-01T00:00:00+00:00'`<br>`job_id` = `'qio-result-job'`<br>`qobj_id` = `'qio-result-qobj'`</details> |
+| `mimiqcircuits.QCSResults -> mimiq_qcsr_json_v1 -> qiskit.Result` | `qiskit_statevector` | qiskit data.statevector | dropped off the self path | numpy/complex is not JSON-safe | - | <details><summary>5 values</summary><br>`statevector` = `[0.0, 0.0, 0.0, 1.0]`<br>`statevector` = `[0.0, 0.7071067811865475, 0.7071067811865475, 0.0]`<br>`statevector` = `[0.0, 1.0]`<br>`statevector` = `[0.7071067811865475, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.7071067811865475]`<br>`statevector` = `[0.7071067811865475, 0.0, 0.0, 0.7071067811865475]`</details> |
+| `qiskit.Result -> qiskit_result_json_v1 -> mimiqcircuits.QCSResults` | `mimiq_amplitudes` | MIMIQ amplitudes | not representable through result JSON | bitarray keys + complex values are not JSON-serializable | `amplitudes` = `{}` | <details><summary>5 values</summary><br>`amplitudes` = `{'00': (0.7071067811865475+0j), '11': (0.7071067811865475+0j)}`<br>`amplitudes` = `{'000': (0.7071067811865475+0j), '111': (0.7071067811865475+0j)}`<br>`amplitudes` = `{'01': (0.7071067811865475+0j), '10': (0.7071067811865475+0j)}`<br>`amplitudes` = `{'1': (1+0j)}`<br>`amplitudes` = `{'11': (1+0j)}`</details> |
+| `qiskit.Result -> qiskit_result_json_v1 -> mimiqcircuits.QCSResults` | `mimiq_metadata` | MIMIQ zstates/fidelities/avggateerrors/timings | dropped | not carried by mimiq_to_dict / dict_to_mimiq today | <details><summary>4 values</summary><br>`avggateerrors` = `[]`<br>`fidelities` = `[]`<br>`timings` = `{}`<br>`zstates` = `[]`</details> | <details><summary>18 values</summary><br>`avggateerrors` = `[0.002]`<br>`avggateerrors` = `[0.003]`<br>`avggateerrors` = `[0.01]`<br>`avggateerrors` = `[0.0]`<br>`fidelities` = `[0.98]`<br>`fidelities` = `[0.995]`<br>`fidelities` = `[0.99]`<br>`fidelities` = `[1.0]`<br>`timings` = `{'total': 0.0031, 'apply': 0.0022}`<br>`timings` = `{'total': 0.0087, 'apply': 0.0066}`<br>`timings` = `{'total': 0.0119, 'apply': 0.0083}`<br>`timings` = `{'total': 0.0123, 'apply': 0.0091}`<br>`timings` = `{'total': 0.0231, 'apply': 0.0184}`<br>`zstates` = `['00']`<br>`zstates` = `['000']`<br>`zstates` = `['01']`<br>`zstates` = `['1']`<br>`zstates` = `['11']`</details> |
+| `qiskit.Result -> qiskit_result_json_v1 -> qiskit.Result` | `qiskit_statevector` | qiskit data.statevector | dropped off the self path | numpy/complex is not JSON-safe | - | <details><summary>5 values</summary><br>`statevector` = `[0.0, 0.0, 0.0, 1.0]`<br>`statevector` = `[0.0, 0.7071067811865475, 0.7071067811865475, 0.0]`<br>`statevector` = `[0.0, 1.0]`<br>`statevector` = `[0.7071067811865475, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.7071067811865475]`<br>`statevector` = `[0.7071067811865475, 0.0, 0.0, 0.7071067811865475]`</details> |
 
 *Lossless edges:* `cudaq.SampleResult -> cudaq_sample_result_json_v1 -> cudaq.SampleResult`, `mimiqcircuits.QCSResults -> mimiq_qcsr_json_v1 -> cirq.Result`, `qiskit.Result -> qiskit_result_json_v1 -> cirq.Result`.
 
 ### analog paradigm
 
-| Edge | Loss | Expected | Actual | Explanation |
-|---|---|---|---|---|
+| Edge | Loss | Expected | Actual | Explanation | Observed (run) | Expected (run) |
+|---|---|---|---|---|---|---|
 
 *Lossless edges:* `pulser.backend.Results -> pulser_result_json_v1 -> pulser.backend.Results`.
 
 ### photonic paradigm
 
-| Edge | Loss | Expected | Actual | Explanation |
-|---|---|---|---|---|
+| Edge | Loss | Expected | Actual | Explanation | Observed (run) | Expected (run) |
+|---|---|---|---|---|---|---|
 
 *Lossless edges:* `perceval.BSSamples -> perceval_result_json_v1 -> perceval.BSSamples`, `perceval.BSSamples:BSCount -> perceval_result_json_v1 -> perceval.BSSamples:BSCount`, `perceval.BSSamples:BSDistribution -> perceval_result_json_v1 -> perceval.BSSamples:BSDistribution`.
 
