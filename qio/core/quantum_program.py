@@ -274,15 +274,21 @@ class QuantumProgram:
         dest_format: QuantumProgramSerializationFormat = QuantumProgramSerializationFormat.QASM_V3,
         compression_format: QuantumProgramCompressionFormat = QuantumProgramCompressionFormat.ZLIB_BASE64_V1,
     ) -> "QuantumProgram":
-        from qio.utils.conversion.program.qiskit_to_qasm2 import (
-            convert as qiskit_to_qasm2_convert,
-        )
-        from qio.utils.conversion.program.qiskit_to_qasm3 import (
-            convert as qiskit_to_qasm3_convert,
-        )
-        from qio.utils.conversion.program.qiskit_to_qir import (
-            convert as qiskit_to_qir_convert,
-        )
+
+        def qiskit_to_qasm2_convert(qiskit_circuit):
+            from qio.utils.conversion.program.qiskit_to_qasm2 import convert
+
+            return convert(qiskit_circuit)
+
+        def qiskit_to_qasm3_convert(qiskit_circuit):
+            from qio.utils.conversion.program.qiskit_to_qasm3 import convert
+
+            return convert(qiskit_circuit)
+
+        def qiskit_to_qir_convert(qiskit_circuit):
+            from qio.utils.conversion.program.qiskit_to_qir import convert
+
+            return convert(qiskit_circuit)
 
         dest_format = (
             QuantumProgramSerializationFormat.QASM_V3
@@ -320,15 +326,20 @@ class QuantumProgram:
             )
 
     def to_qiskit_circuit(self) -> "qiskit.QuantumCircuit":
-        from qio.utils.conversion.program.qasm1_to_qiskit import (
-            convert as qasm1_to_qiskit_convert,
-        )
-        from qio.utils.conversion.program.qasm2_to_qiskit import (
-            convert as qasm2_to_qiskit_convert,
-        )
-        from qio.utils.conversion.program.qasm3_to_qiskit import (
-            convert as qasm3_to_qiskit_convert,
-        )
+        def qasm2_to_qiskit_convert(serialization):
+            from qio.utils.conversion.program.qasm2_to_qiskit import convert
+
+            return convert(serialization)
+
+        def qasm3_to_qiskit_convert(serialization):
+            from qio.utils.conversion.program.qasm3_to_qiskit import convert
+
+            return convert(serialization)
+
+        def qasm1_to_qiskit_convert(serialization):
+            from qio.utils.conversion.program.qasm1_to_qiskit import convert
+
+            return convert(serialization)
 
         serialization = self.serialization
 
@@ -349,12 +360,15 @@ class QuantumProgram:
             )
 
     def to_mimiq_circuit(self) -> "mimiqcircuits.Circuit":
-        from qio.utils.conversion.program.qasm2_to_mimiq import (
-            convert as qasm2_to_mimiq_convert,
-        )
-        from qio.utils.conversion.program.qasm3_to_mimiq import (
-            convert as qasm3_to_mimiq_convert,
-        )
+        def qasm2_to_mimiq_convert(serialization):
+            from qio.utils.conversion.program.qasm2_to_mimiq import convert
+
+            return convert(serialization)
+
+        def qasm3_to_mimiq_convert(serialization):
+            from qio.utils.conversion.program.qasm3_to_mimiq import convert
+
+            return convert(serialization)
 
         serialization = self.serialization
 
@@ -474,18 +488,25 @@ class QuantumProgram:
         dest_format: QuantumProgramSerializationFormat = QuantumProgramSerializationFormat.CIRQ_CIRCUIT_JSON_V1,
         compression_format: QuantumProgramCompressionFormat = QuantumProgramCompressionFormat.ZLIB_BASE64_V1,
     ) -> "QuantumProgram":
-        from qio.utils.conversion.program.cirq_to_cirqjson import (
-            convert as cirq_to_cirqjson_convert,
-        )
-        from qio.utils.conversion.program.cirq_to_qasm2 import (
-            convert as cirq_to_qasm2_convert,
-        )
-        from qio.utils.conversion.program.cirq_to_qasm3 import (
-            convert as cirq_to_qasm3_convert,
-        )
-        from qio.utils.conversion.program.cirq_to_qir import (
-            convert as cirq_to_qir_convert,
-        )
+        def cirq_to_cirqjson_convert(cirq_circuit):
+            from qio.utils.conversion.program.cirq_to_cirqjson import convert
+
+            return convert(cirq_circuit)
+
+        def cirq_to_qasm2_convert(cirq_circuit):
+            from qio.utils.conversion.program.cirq_to_qasm2 import convert
+
+            return convert(cirq_circuit)
+
+        def cirq_to_qasm3_convert(cirq_circuit):
+            from qio.utils.conversion.program.cirq_to_qasm3 import convert
+
+            return convert(cirq_circuit)
+
+        def cirq_to_qir_convert(cirq_circuit):
+            from qio.utils.conversion.program.cirq_to_qir import convert
+
+            return convert(cirq_circuit)
 
         dest_format = (
             QuantumProgramSerializationFormat.CIRQ_CIRCUIT_JSON_V1
@@ -522,18 +543,25 @@ class QuantumProgram:
             raise Exception("unsupported serialization:", dest_format, e)
 
     def to_cirq_circuit(self) -> "cirq.Circuit":
-        from qio.utils.conversion.program.qasm1_to_cirq import (
-            convert as qasm1_to_cirq_convert,
-        )
-        from qio.utils.conversion.program.qasm2_to_cirq import (
-            convert as qasm2_to_cirq_convert,
-        )
-        from qio.utils.conversion.program.qasm3_to_cirq import (
-            convert as qasm3_to_cirq_convert,
-        )
-        from qio.utils.conversion.program.cirqjson_to_cirq import (
-            convert as cirqjson_to_cirq_convert,
-        )
+        def cirqjson_to_cirq_convert(serialization):
+            from qio.utils.conversion.program.cirqjson_to_cirq import convert
+
+            return convert(serialization)
+
+        def qasm2_to_cirq_convert(serialization):
+            from qio.utils.conversion.program.qasm2_to_cirq import convert
+
+            return convert(serialization)
+
+        def qasm3_to_cirq_convert(serialization):
+            from qio.utils.conversion.program.qasm3_to_cirq import convert
+
+            return convert(serialization)
+
+        def qasm1_to_cirq_convert(serialization):
+            from qio.utils.conversion.program.qasm1_to_cirq import convert
+
+            return convert(serialization)
 
         serialization = self.serialization
 
@@ -565,15 +593,20 @@ class QuantumProgram:
         dest_format: QuantumProgramSerializationFormat = QuantumProgramSerializationFormat.QASM_V2,
         compression_format: QuantumProgramCompressionFormat = QuantumProgramCompressionFormat.ZLIB_BASE64_V1,
     ) -> "QuantumProgram":
-        from qio.utils.conversion.program.cudaq_to_qasm2 import (
-            convert as cudaq_to_qasm2_convert,
-        )
-        from qio.utils.conversion.program.cudaq_to_qasm3 import (
-            convert as cudaq_to_qasm3_convert,
-        )
-        from qio.utils.conversion.program.cudaq_to_qir import (
-            convert as cudaq_to_qir_convert,
-        )
+        def cudaq_to_qasm2_convert(cudaq_kernel):
+            from qio.utils.conversion.program.cudaq_to_qasm2 import convert
+
+            return convert(cudaq_kernel)
+
+        def cudaq_to_qasm3_convert(cudaq_kernel):
+            from qio.utils.conversion.program.cudaq_to_qasm3 import convert
+
+            return convert(cudaq_kernel)
+
+        def cudaq_to_qir_convert(cudaq_kernel):
+            from qio.utils.conversion.program.cudaq_to_qir import convert
+
+            return convert(cudaq_kernel)
 
         dest_format = (
             QuantumProgramSerializationFormat.QASM_V2
@@ -609,15 +642,20 @@ class QuantumProgram:
             raise Exception("unsupported serialization:", dest_format, e)
 
     def to_cudaq_kernel(self) -> "cudaq.Kernel":
-        from qio.utils.conversion.program.qasm2_to_cudaq import (
-            convert as qasm2_to_cudaq_convert,
-        )
-        from qio.utils.conversion.program.qasm3_to_cudaq import (
-            convert as qasm3_to_cudaq_convert,
-        )
-        from qio.utils.conversion.program.qir_to_cudaq import (
-            convert as qir_to_cudaq_convert,
-        )
+        def qasm2_to_cudaq_convert(serialization):
+            from qio.utils.conversion.program.qasm2_to_cudaq import convert
+
+            return convert(serialization)
+
+        def qasm3_to_cudaq_convert(serialization):
+            from qio.utils.conversion.program.qasm3_to_cudaq import convert
+
+            return convert(serialization)
+
+        def qir_to_cudaq_convert(serialization):
+            from qio.utils.conversion.program.qir_to_cudaq import convert
+
+            return convert(serialization)
 
         serialization = self.serialization
 

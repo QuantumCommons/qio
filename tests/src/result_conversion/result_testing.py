@@ -87,6 +87,7 @@ LOSS_MIMIQ_METADATA = "mimiq_metadata"
 LOSS_MIMIQ_AMPLITUDES = "mimiq_amplitudes"
 LOSS_CUDAQ_REGISTER = "cudaq_register"
 
+
 @dataclass(frozen=True)
 class LossDescription:
     """Expected vs actual of a loss category, with a short explanation."""
@@ -113,8 +114,7 @@ _LOSS_DESCRIPTIONS = {
         why="cirq.ParamResolver is not JSON-serializable by the qio pipeline",
     ),
     LOSS_QISKIT_METADATA: LossDescription(
-        expected="qiskit job metadata (backend_name/version, job_id, "
-        "qobj_id, date)",
+        expected="qiskit job metadata (backend_name/version, job_id, " "qobj_id, date)",
         actual="dropped off the self path",
         why="backend/job identifiers are not carried by every source SDK "
         "into the JSON intermediate",

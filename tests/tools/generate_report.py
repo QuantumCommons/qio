@@ -144,7 +144,11 @@ def _paradigm_block(
     )
     lossy = [e for e in paradigm_edges if e.known_losses]
     lossless = [e for e in paradigm_edges if not e.known_losses]
-    out = [f"### {name} paradigm", "", _loss_table(lossy, descriptions, observed, with_columns)]
+    out = [
+        f"### {name} paradigm",
+        "",
+        _loss_table(lossy, descriptions, observed, with_columns),
+    ]
     if lossless:
         ids = ", ".join(f"`{_esc(e.id)}`" for e in lossless)
         out += ["", f"*Lossless edges:* {ids}."]
