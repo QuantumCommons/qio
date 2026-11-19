@@ -29,7 +29,7 @@ _PTR_TO_INDEX = re.compile(r"^ptr inttoptr \(i64 (\d+) to ptr\)$")
 
 _SIMPLE_ONE_QUBIT = {"h", "x", "y", "z", "s", "t", "s_adj", "t_adj"}
 _ADJOINT_MAP = {"s_adj": "sdg", "t_adj": "tdg"}
-_ROTATIONS = {"rx", "ry", "rz"}
+_ROTATIONS = {"rx", "ry", "rz", "r1"}
 _SELF_ADJOINT = {"h", "x", "y", "z", "cnot", "cz", "swap"}
 
 
@@ -73,6 +73,7 @@ def _required_num_qubits(fn: Function) -> Optional[int]:
 
 
 _ALLOCATE_ARRAY = "__quantum__rt__qubit_allocate_array"
+_ALLOCATE = "__quantum__rt__qubit_allocate"
 _ELEMENT_PTR = "__quantum__rt__array_get_element_ptr_1d"
 _GENERALIZED_INVOKE = "generalizedInvokeWithRotationsControlsTargets"
 _GATE_BY_CONTROL = {"x": "cnot", "z": "cz"}
@@ -82,13 +83,15 @@ def _ssa_qubit_index_map(
     fn: Function,
 ) -> Tuple[Dict[str, int], Optional[int]]:
     """Map every SSA pointer value that addresses a qubit (keyed by its
-    rendered text) to its qubit index, and return the qubit count of the
-    ``qubit_allocate_array`` when one is present.
+    rendered text) to its qubit index, and return the qubit count. CUDA-Q
+    <= 0.15 allocates a QIR array (``qubit_allocate_array``); CUDA-Q >= 0.16
+    allocates qubits one by one (``qubit_allocate``), indexed in call order.
 
     Definition-before-use lets the map be built in a single forward pass.
     """
     qubit_of: Dict[str, int] = {}
     num_qubits: Optional[int] = None
+    next_qubit = 0
     for bb in fn.basic_blocks:
         for inst in bb.instructions:
             callee = getattr(inst, "callee", None)
@@ -97,6 +100,11 @@ def _ssa_qubit_index_map(
             if name == _ALLOCATE_ARRAY:
                 qubit_count = inst.operands[0].value  # IntConstant
                 num_qubits = int(qubit_count)
+
+            elif name == _ALLOCATE:
+                qubit_of[str(inst)] = next_qubit
+                next_qubit += 1
+                num_qubits = next_qubit
 
             elif name == _ELEMENT_PTR:
                 qubit = inst.operands[1].value  # IntConstant index

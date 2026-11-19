@@ -500,15 +500,21 @@ def _qir_num_qubits(source: str) -> Optional[int]:
     """Best-effort qubit count of a QIR module.
 
     The qBraid-derived producers write qubit ``0`` as ``ptr null`` and qubit
-    ``i > 0`` as ``ptr inttoptr (i64 i to ptr)``; CUDA-Q allocates a QIR array
-    (``@__quantum__rt__qubit_allocate_array``). Returns ``None`` when the
-    qubit cardinality cannot be derived.
+    ``i > 0`` as ``ptr inttoptr (i64 i to ptr)``; CUDA-Q <= 0.15 allocates a
+    QIR array (``@__quantum__rt__qubit_allocate_array``) while CUDA-Q >= 0.16
+    allocates qubits one by one (``@__quantum__rt__qubit_allocate``). Returns
+    ``None`` when the qubit cardinality cannot be derived.
     """
     import re
 
     m = re.search(r"@__quantum__rt__qubit_allocate_array\((?:i32|i64)\s*(\d+)", source)
     if m:
         return int(m.group(1))
+    num_allocated = len(
+        re.findall(r"call ptr @__quantum__rt__qubit_allocate\(", source)
+    )
+    if num_allocated:
+        return num_allocated
     indices = {int(x) for x in re.findall(r"inttoptr \(i64 (\d+) to ptr\)", source)}
     if indices:
         return max(indices) + 1
