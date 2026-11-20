@@ -16,6 +16,33 @@ from qio.core import (
 )
 
 
+def _qasm2_mx_unsafe() -> bool:
+    """CUDA-Q >= 0.16 segfaults its OpenQASM 2 emitter on X-basis measurements
+    (`mx`); translate to QIR there instead."""
+    try:
+        cudaq.SampleResult({"0": 1})
+        return True
+    except TypeError:
+        return False
+
+
+def _qasm2_state_prep_unsafe() -> bool:
+    """CUDA-Q >= 0.15 cannot lower arbitrary state preparation
+    (``qvector([...])``) to OpenQASM 2: the emitter returns the
+    ``{translation failed}`` sentinel and no other qio-readable format
+    (QASM3/QIR) can carry the state, so round-trips are skipped there."""
+
+    @cudaq.kernel
+    def _state_prep():
+        q = cudaq.qvector([1.0 / np.sqrt(2.0), 0.0, 0.0, 1.0 / np.sqrt(2.0)])
+        mz(q)
+
+    return (
+        cudaq.translate(_state_prep, format="openqasm2").strip()
+        == "{translation failed}"
+    )
+
+
 def test_global_cudaq_flow():
     ### Server side
     shots = 1000
@@ -193,7 +220,14 @@ def test_all_gates():
         mz(q)
 
     # Test here is that this runs
-    program = QuantumProgram.from_cudaq_kernel(single_qubit_gates)
+    dest_format = (
+        QuantumProgramSerializationFormat.QIR_V1
+        if _qasm2_mx_unsafe()
+        else QuantumProgramSerializationFormat.QASM_V2
+    )
+    program = QuantumProgram.from_cudaq_kernel(
+        single_qubit_gates, dest_format=dest_format
+    )
     kernel_from_program = program.to_cudaq_kernel()
 
     counts = cudaq.sample(kernel_from_program, shots_count=100)
@@ -551,6 +585,12 @@ def test_state_prep():
     def kernel():
         q = cudaq.qvector([1.0 / np.sqrt(2.0), 0.0, 0.0, 1.0 / np.sqrt(2.0)])
         mz(q)
+
+    if _qasm2_state_prep_unsafe():
+        pytest.skip(
+            "CUDA-Q >= 0.15 cannot lower arbitrary state preparation to "
+            "OpenQASM 2 (nor to any qio-readable format)"
+        )
 
     program = QuantumProgram.from_cudaq_kernel(kernel)
     kernel_from_program = program.to_cudaq_kernel()

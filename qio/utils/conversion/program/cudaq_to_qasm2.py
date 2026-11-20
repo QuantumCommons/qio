@@ -15,6 +15,14 @@ import cudaq
 
 from cudaq import PyKernel
 
+_TRANSLATE_FAILED = "{translation failed}"
+
 
 def convert(cudaq_kernel: PyKernel) -> str:
-    return cudaq.translate(cudaq_kernel, format="openqasm2")
+    qasm2 = cudaq.translate(cudaq_kernel, format="openqasm2")
+    if qasm2.strip() == _TRANSLATE_FAILED:
+        raise RuntimeError(
+            "CUDA-Q failed to lower this kernel to OpenQASM 2 "
+            f"(the emitter returned {_TRANSLATE_FAILED})"
+        )
+    return qasm2
